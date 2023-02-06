@@ -1,0 +1,817 @@
+use std::{io::Cursor, rc::Rc};
+
+use ariadne::{Color, Label, Report, ReportKind, Source};
+use colored::Colorize;
+use fxhash::FxHashMap;
+
+use crate::{
+    builtins::{BuiltinAdder, BuiltinFnMap},
+    parser::{Expr, Op, Span, Spanned},
+    value::Value,
+};
+
+/// Type that represents a runtime Function in the VM
+/// ### Fields
+/// * `args` - the arguments of the function
+/// * `body` - the body of the function
+///
+#[derive(Clone, Debug)]
+pub(crate) struct Function {
+    pub args: Vec<String>,
+    pub body: Vec<Spanned<Expr>>,
+}
+
+/// A VM that can execute Quilt code
+/// ### Fields
+/// * `frames` - the stack of frames
+/// * `functions` - the functions defined in the VM
+/// * `data` - the data that builtins in the VM can access
+/// * `builtins` - the builtins that the VM can access
+///
+/// ### Examples
+/// ```no_run
+/// use quilt::prelude::*;
+///
+/// let mut vm = VM::with_stdio(());
+/// let ast = parse("@print('Hello, world!')").unwrap();
+/// vm.eval(ast).map_err(|e| e.print()).unwrap();
+/// ```
+pub struct VM<Data> {
+    pub frames: Vec<FxHashMap<String, Value>>,
+    pub(crate) functions: FxHashMap<String, Rc<Function>>,
+
+    /// Can be used to store any state the VM needs to access
+    pub data: Data,
+    pub builtins: BuiltinFnMap<Data>,
+}
+
+impl<Data> VM<Data> {
+    /// Creates a new VM with no builtins
+    pub fn new(data: Data) -> Self {
+        Self {
+            frames: vec![FxHashMap::default()],
+            functions: FxHashMap::default(),
+            data,
+            builtins: BuiltinFnMap::default(),
+        }
+    }
+
+    /// Creates a new VM with the standard library builtins (std, math)
+    pub fn with_std(data: Data) -> Self {
+        let mut vm = Self::new(data);
+        vm.add_builtins(crate::std::std);
+        vm.add_builtins(crate::std::math);
+        vm
+    }
+
+    /// Creates a new VM with the standard library builtins (std, math, io)
+    pub fn with_stdio(data: Data) -> Self {
+        let mut vm = Self::new(data);
+        vm.add_builtins(crate::std::std);
+        vm.add_builtins(crate::std::math);
+        vm.add_builtins(crate::std::io);
+
+        vm
+    }
+
+    /// Adds a builtin group to the VM
+    pub fn add_builtins(&mut self, adder: BuiltinAdder<Data>) {
+        adder(&mut self.builtins);
+    }
+
+    /// Adds multiple builtin groups to the VM
+    pub fn add_builtins_from(&mut self, adders: &[BuiltinAdder<Data>]) {
+        for adder in adders {
+            adder(&mut self.builtins);
+        }
+    }
+
+    /// Remove and get a variable from the current frame
+    pub fn remove(&mut self, name: Spanned<String>) -> Result<Value, RuntimeError> {
+        for frame in self.frames.iter_mut().rev() {
+            if let Some(result) = frame.remove(&name.0) {
+                return Ok(result);
+            }
+        }
+
+        Err(RuntimeError {
+            msg: format!("Variable '{}' is not defined", name.0)
+                .red()
+                .to_string(),
+            span: name.1,
+            help: Some(
+                format!("define it with 'let {} = ...'", name.0)
+                    .yellow()
+                    .to_string(),
+            ),
+            color: None,
+        })
+    }
+
+    /// Gets a variable from the current frame
+    pub fn get(&self, name: Spanned<String>) -> Result<Value, RuntimeError> {
+        for frame in self.frames.iter().rev() {
+            if let Some(expr) = frame.get(&name.0) {
+                return Ok(expr.clone());
+            }
+        }
+
+        Err(RuntimeError {
+            msg: format!("Variable '{}' is not defined", name.0)
+                .red()
+                .to_string(),
+            span: name.1,
+            help: Some(
+                format!("define it with 'let {} = ...'", name.0)
+                    .yellow()
+                    .to_string(),
+            ),
+            color: None,
+        })
+    }
+
+    /// Declares a variable in the current frame
+    pub fn declare(&mut self, name: &str, value: Value) {
+        if let Some(result) = self.frames.last_mut() {
+            result.insert(name.to_string(), value);
+        }
+    }
+
+    /// Pushes a new frame onto the stack
+    ///
+    /// ⚠️ *The maximum stack size is 5* ⚠️
+    pub fn push_frame(&mut self, span: Span) -> Result<(), RuntimeError> {
+        if self.frames.len() >= 5 {
+            return Err(RuntimeError {
+                msg: "Maximum call stack size exceeded".red().to_string(),
+                span,
+                help: None,
+                color: None,
+            });
+        }
+
+        self.frames.push(FxHashMap::default());
+        Ok(())
+    }
+
+    /// Pops a frame off the stack
+    pub fn pop_frame(&mut self) -> Option<FxHashMap<String, Value>> {
+        self.frames.pop()
+    }
+
+    /// update the value of a variable in the current frame
+    /// or any of the parent frames
+    ///
+    /// ### Errors
+    /// If the variable is not declared
+    pub fn set(&mut self, name: Spanned<String>, value: Value) -> Result<(), RuntimeError> {
+        for frame in self.frames.iter_mut().rev() {
+            if let Some(result) = frame.get_mut(&name.0) {
+                *result = value;
+                return Ok(());
+            }
+        }
+        Err(RuntimeError {
+            msg: format!("Variable '{}' is not declared", name.0)
+                .red()
+                .to_string(),
+            span: name.1,
+            help: Some(
+                format!("declare it with 'let {} = ...'", name.0)
+                    .yellow()
+                    .to_string(),
+            ),
+            color: None,
+        })
+    }
+
+    /// evals a list of expressions (ast)
+    pub fn eval(&mut self, ast: Vec<Spanned<Expr>>) -> Result<Value, RuntimeError> {
+        let mut result = Value::None;
+        for expr in ast {
+            result = self.eval_expr(expr)?;
+        }
+        Ok(result)
+    }
+
+    pub fn finish(self) -> Data {
+        self.data
+    }
+
+    /// evals a single expression
+    pub fn eval_expr(&mut self, expr: Spanned<Expr>) -> Result<Value, RuntimeError> {
+        match expr.0 {
+            Expr::Literal(l) => Ok(l),
+            Expr::Ident(name) => self.get((name, expr.1)),
+            Expr::Yoink(name) => self.remove((name, expr.1)),
+            Expr::List(items) => Ok(Value::List(
+                items
+                    .into_iter()
+                    .map(|item| self.eval_expr(item))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            Expr::Declaration(name, value) => {
+                let value = self.eval_expr(*value)?;
+                self.declare(&name, value);
+                Ok(Value::None)
+            }
+            Expr::MultiDeclaration(names, value) => {
+                let value = self.eval_expr(*value)?;
+                match value {
+                    Value::List(items) => {
+                        if items.len() != names.len() {
+                            return Err(RuntimeError {
+                                msg: format!(
+                                    "Expected {} items in list, got {}",
+                                    names.len(),
+                                    items.len()
+                                )
+                                .red()
+                                .to_string(),
+                                span: expr.1,
+                                help: None,
+                                color: None,
+                            });
+                        }
+
+                        for (name, value) in names.into_iter().zip(items) {
+                            self.declare(&name, value);
+                        }
+                        Ok(Value::None)
+                    }
+                    _ => {
+                        return Err(RuntimeError {
+                            msg: format!(
+                                "Cannot unpack {} into {} variables",
+                                value.ntype().cyan(),
+                                names.len()
+                            )
+                            .red()
+                            .to_string(),
+                            span: expr.1,
+                            help: None,
+                            color: Some(Color::Red),
+                        })
+                    }
+                }
+            }
+            Expr::Assignment(name, value) => {
+                let value = self.eval_expr(*value)?;
+                self.set(name, value)?;
+                Ok(Value::None)
+            }
+            Expr::Binary(op, lhs, rhs) => {
+                let lhs = self.eval_expr(*lhs)?;
+                let rhs = self.eval_expr(*rhs)?;
+                self.eval_binary(op, lhs, rhs, expr.1)
+            }
+            Expr::Unary(op, lhs) => {
+                let lhs = self.eval_expr(*lhs)?;
+                match &op {
+                    Op::Not => match lhs {
+                        Value::Bool(b) => Ok(Value::Bool(!b)),
+                        _ => Err(RuntimeError {
+                            msg: format!(
+                                "Cannot perform logical NOT on type {}",
+                                lhs.ntype().cyan()
+                            )
+                            .yellow()
+                            .to_string(),
+                            span: expr.1,
+                            help: None,
+                            color: Some(Color::Yellow),
+                        }),
+                    },
+                    Op::Neg => match lhs {
+                        Value::Int(i) => Ok(Value::Int(-i)),
+                        Value::Float(f) => Ok(Value::Float(-f)),
+                        _ => Err(RuntimeError {
+                            msg: format!("Cannot perform negation on type {}", lhs.ntype().cyan())
+                                .yellow()
+                                .to_string(),
+                            span: expr.1,
+                            help: None,
+                            color: Some(Color::Yellow),
+                        }),
+                    },
+                    _ => Ok(lhs),
+                }
+            }
+            Expr::Function(name, args, body) => {
+                self.functions
+                    .insert(name, Rc::new(Function { args, body }));
+                Ok(Value::None)
+            }
+            Expr::Call(name, args) => self.eval_function(name, args),
+            Expr::BuiltinCall(name, args) => self.eval_builtin(name, args),
+            Expr::Conditional(cond, then, otherwise) => {
+                let cond = self.eval_expr(*cond)?;
+
+                let mut result = Value::None;
+                match cond {
+                    Value::Bool(true) => {
+                        // self.frames.push(FxHashMap::default());
+
+                        result = then
+                            .iter()
+                            .map(|expr| self.eval_expr(expr.clone()))
+                            .last()
+                            .unwrap_or(Ok(Value::None))?;
+
+                        // self.frames.pop();
+                    }
+                    Value::Bool(false) => {
+                        if let Some(otherwise) = otherwise {
+                            // self.frames.push(FxHashMap::default());
+
+                            result = otherwise
+                                .iter()
+                                .map(|expr| self.eval_expr(expr.clone()))
+                                .last()
+                                .unwrap_or(Ok(Value::None))?;
+
+                            // self.frames.pop();
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError {
+                            msg: format!(
+                                "type {} is not a boolean expression",
+                                cond.ntype().cyan()
+                            )
+                            .yellow()
+                            .to_string(),
+                            span: expr.1,
+                            help: None,
+                            color: Some(Color::Yellow),
+                        })
+                    }
+                };
+
+                Ok(result)
+            }
+        }
+    }
+
+    /// Evaluate a function call
+    pub fn eval_function(
+        &mut self,
+        name: Spanned<String>,
+        values: Vec<Spanned<Expr>>,
+    ) -> Result<Value, RuntimeError> {
+        let values = values
+            .into_iter()
+            .map(|v| self.eval_expr(v))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if let Some(func) = self.functions.get(&name.0) {
+            let func = func.clone();
+            self.push_frame(name.1)?;
+
+            func.args
+                .iter()
+                .zip(values.into_iter())
+                .for_each(|(name, value)| {
+                    if let Some(result) = self.frames.last_mut() {
+                        result.insert(name.to_string(), value);
+                    }
+                });
+
+            let mut result = Value::None;
+
+            for expr in &func.body {
+                result = self.eval_expr(expr.clone())?;
+            }
+
+            self.pop_frame();
+
+            Ok(result)
+        } else {
+            Err(RuntimeError {
+                msg: format!("Function '{}' is not defined", name.0)
+                    .red()
+                    .to_string(),
+                span: name.1,
+                help: Some(
+                    format!("define it with 'fn {}(...) {{ ... }}'", name.0)
+                        .yellow()
+                        .to_string(),
+                ),
+                color: None,
+            })
+        }
+    }
+
+    /// evals a builtin function call
+    pub fn eval_builtin(
+        &mut self,
+        name: Spanned<String>,
+        values: Vec<Spanned<Expr>>,
+    ) -> Result<Value, RuntimeError> {
+        let (s, mut e) = (name.1.start, name.1.end);
+        let values = values
+            .into_iter()
+            .map(|v| {
+                let span = v.1.clone();
+                e = e.max(span.end);
+                Ok((self.eval_expr(v)?, span))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if let Some(func) = self.builtins.get(&name.0) {
+            (func)(
+                &mut self.data,
+                &mut (values, s.saturating_sub(1)..e.saturating_add(1)),
+            )
+        } else {
+            Err(RuntimeError {
+                msg: format!("Outbound '{}' is not defined", name.0)
+                    .red()
+                    .to_string(),
+                span: name.1,
+                help: None,
+                color: None,
+            })
+        }
+    }
+
+    /// Evaluate a binary operation
+    pub fn eval_binary(
+        &mut self,
+        op: Op,
+        lhs: Value,
+        rhs: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        match &op {
+            Op::Add => match (&lhs, &rhs) {
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Str(format!("{}{}", lhs, rhs))),
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 + rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs + *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs + rhs)),
+                (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
+                    lhs[0].saturating_add(rhs[0]),
+                    lhs[1].saturating_add(rhs[1]),
+                    lhs[2].saturating_add(rhs[2]),
+                    lhs[3].saturating_add(rhs[3]),
+                ])),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot add types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Sub => match (&lhs, &rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs - rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 - rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs - *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs - rhs)),
+                (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
+                    lhs[0].saturating_sub(rhs[0]),
+                    lhs[1].saturating_sub(rhs[1]),
+                    lhs[2].saturating_sub(rhs[2]),
+                    lhs[3].saturating_sub(rhs[3]),
+                ])),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot subtract types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Mul => match (&lhs, &rhs) {
+                (Value::Str(lhs), Value::Int(rhs)) => {
+                    Ok(Value::Str(lhs.repeat(*rhs.min(&64) as usize)))
+                }
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs * rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 * rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs * *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs * rhs)),
+                (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
+                    lhs[0].saturating_mul(rhs[0]),
+                    lhs[1].saturating_mul(rhs[1]),
+                    lhs[2].saturating_mul(rhs[2]),
+                    lhs[3].saturating_mul(rhs[3]),
+                ])),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot multiply types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Div => {
+                if rhs == Value::Int(0) || rhs == Value::Float(0.0) {
+                    return Err(RuntimeError {
+                        msg: "Cannot divide by zero".red().to_string(),
+                        span,
+                        help: None,
+                        color: None,
+                    });
+                }
+                match (&lhs, &rhs) {
+                    (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Str(lhs.replace(rhs, ""))),
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs / rhs)),
+                    (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 / rhs)),
+                    (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs / *rhs as f32)),
+                    (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs / rhs)),
+                    (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
+                        lhs[0].saturating_div(rhs[0]),
+                        lhs[1].saturating_div(rhs[1]),
+                        lhs[2].saturating_div(rhs[2]),
+                        lhs[3].saturating_div(rhs[3]),
+                    ])),
+                    _ => Err(RuntimeError {
+                        msg: format!(
+                            "Cannot divide types {} and {}",
+                            lhs.ntype().cyan(),
+                            rhs.ntype().cyan()
+                        )
+                        .yellow()
+                        .to_string(),
+                        span,
+                        help: None,
+                        color: Some(Color::Yellow),
+                    }),
+                }
+            }
+            Op::Mod => {
+                if rhs == Value::Int(0) || rhs == Value::Float(0.0) {
+                    return Err(RuntimeError {
+                        msg: "Cannot modulo by zero".red().to_string(),
+                        span,
+                        help: None,
+                        color: None,
+                    });
+                }
+
+                match (&lhs, &rhs) {
+                    (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs % rhs)),
+                    (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 % rhs)),
+                    (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs % *rhs as f32)),
+                    (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs % rhs)),
+                    _ => Err(RuntimeError {
+                        msg: format!(
+                            "Cannot modulo types {} and {}",
+                            lhs.ntype().cyan(),
+                            rhs.ntype().cyan()
+                        )
+                        .yellow()
+                        .to_string(),
+                        span,
+                        help: None,
+                        color: Some(Color::Yellow),
+                    }),
+                }
+            }
+            Op::Pow => match (&lhs, &rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs.pow(*rhs as u32))),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float((*lhs as f32).powf(*rhs))),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs.powf(*rhs as f32))),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs.powf(*rhs))),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot exponentiate types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Eq => Ok(Value::Bool(lhs == rhs)),
+            Op::Neq => Ok(Value::Bool(lhs != rhs)),
+            Op::Lt => match (&lhs, &rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs < rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) < *rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs < *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs < *rhs)),
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs < rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot compare types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Gt => match (&lhs, &rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs > rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) > *rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs > *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs > *rhs)),
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs > rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot compare types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Lte => match (&lhs, &rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs <= rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) <= *rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs <= *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs <= *rhs)),
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs <= rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot compare types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Gte => match (&lhs, &rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs >= rhs)),
+                (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) >= *rhs)),
+                (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs >= *rhs as f32)),
+                (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs >= *rhs)),
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs >= rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot compare types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::And => match (&lhs, &rhs) {
+                (Value::Bool(lhs), Value::Bool(rhs)) => Ok(Value::Bool(*lhs && *rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot perform logical AND on types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Or => match (&lhs, &rhs) {
+                (Value::Bool(lhs), Value::Bool(rhs)) => Ok(Value::Bool(*lhs || *rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot perform logical OR on types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Join => match (&lhs, &rhs) {
+                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Str(lhs.clone() + rhs)),
+                (Value::Str(lhs), Value::Int(rhs)) => {
+                    Ok(Value::Str(lhs.clone() + &rhs.to_string()))
+                }
+                (Value::Str(lhs), Value::Float(rhs)) => {
+                    Ok(Value::Str(lhs.clone() + &rhs.to_string()))
+                }
+                (Value::Str(lhs), Value::Bool(rhs)) => {
+                    Ok(Value::Str(lhs.clone() + &rhs.to_string()))
+                }
+                (Value::Int(lhs), Value::Str(rhs)) => Ok(Value::Str(lhs.to_string() + rhs)),
+                (Value::Float(lhs), Value::Str(rhs)) => Ok(Value::Str(lhs.to_string() + rhs)),
+                (Value::Bool(lhs), Value::Str(rhs)) => Ok(Value::Str(lhs.to_string() + rhs)),
+                _ => Err(RuntimeError {
+                    msg: format!(
+                        "Cannot join types {} and {}",
+                        lhs.ntype().cyan(),
+                        rhs.ntype().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Not => match lhs {
+                Value::Bool(b) => Ok(Value::Bool(!b)),
+                _ => Err(RuntimeError {
+                    msg: format!("Cannot perform logical NOT on type {}", lhs.ntype().cyan())
+                        .yellow()
+                        .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+            Op::Neg => match lhs {
+                Value::Int(i) => Ok(Value::Int(-i)),
+                Value::Float(f) => Ok(Value::Float(-f)),
+                _ => Err(RuntimeError {
+                    msg: format!("Cannot perform negation on type {}", lhs.ntype().cyan())
+                        .yellow()
+                        .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            },
+        }
+    }
+}
+
+/// A runtime error.
+/// ### Fields
+/// - `msg`: The error message.
+/// - `help`: An optional help message.
+/// - `span`: The span of the error.
+/// - `color`: The color of the error message.
+#[derive(Debug, Clone)]
+pub struct RuntimeError {
+    pub msg: String,
+    pub help: Option<String>,
+    pub span: Span,
+    pub color: Option<ariadne::Color>,
+}
+
+impl RuntimeError {
+    /// Creates a report for the error.
+    pub fn report(self) -> ariadne::Report {
+        let mut report = Report::build(ReportKind::Error, (), self.span.start).with_label(
+            Label::new(self.span)
+                .with_message(self.msg)
+                .with_color(self.color.unwrap_or(Color::Red)),
+        );
+
+        if let Some(help) = &self.help {
+            report.set_help(help);
+        }
+
+        report.finish()
+    }
+
+    /// Prints the error to stdout.
+    pub fn print(self, src: &str) -> Result<(), std::io::Error> {
+        self.report().print(Source::from(src))
+    }
+
+    /// Converts the error to a formatted string.
+    pub fn to_string(self, src: &str) -> Result<String, std::io::Error> {
+        let mut buf = vec![];
+        let cursor = Cursor::new(&mut buf);
+        self.report().write(Source::from(src), cursor)?;
+
+        if let Ok(s) = String::from_utf8(buf) {
+            Ok(s)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Could not convert to string",
+            ))
+        }
+    }
+}
