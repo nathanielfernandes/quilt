@@ -58,10 +58,10 @@ impl Consumable for BuiltinArgs {
                     if id == sid {
                         Ok(value)
                     } else {
-                        Err(expected(id, sid, item.1))
+                        Err(expected(sid, id, item.1))
                     }
                 }
-                _ => Err(expected(id, id, item.1)),
+                _ => Err(expected(item.0.ntype(), id, item.1)),
             }
         } else {
             Err(RuntimeError {
