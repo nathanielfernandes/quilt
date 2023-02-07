@@ -21,7 +21,8 @@ pub enum Value {
     Color([u8; 4]),
     List(Vec<Value>),
     Pair(Box<Value>, Box<Value>),
-    Custom(&'static str, usize),
+
+    Special(&'static str, usize),
 }
 
 impl std::fmt::Display for Value {
@@ -35,7 +36,7 @@ impl std::fmt::Display for Value {
             Value::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
             Value::List(l) => write!(f, "{:?}", l),
             Value::Pair(l, r) => write!(f, "({}, {})", l, r),
-            Value::Custom(s, id) => write!(f, "<custom ref={} id={}>", s, id),
+            Value::Special(s, id) => write!(f, "<special id={} value={}>", s, id),
         }
     }
 }
@@ -52,7 +53,7 @@ impl Value {
             Value::Color(_) => "color",
             Value::List(_) => "list",
             Value::Pair(_, _) => "pair",
-            Value::Custom(_, _) => "custom",
+            Value::Special(id, _) => id,
         }
     }
 }

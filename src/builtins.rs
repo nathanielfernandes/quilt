@@ -33,6 +33,8 @@ pub trait Consumable {
     fn rest(&mut self) -> Result<Vec<Value>, RuntimeError>;
     fn any(&mut self) -> Result<Value, RuntimeError>;
     fn stop(&mut self) -> Result<(), RuntimeError>;
+
+    fn special(&mut self, id: &str) -> Result<usize, RuntimeError>;
 }
 
 /// helper function to create a [`RuntimeError`] for when an unexpected value is encountered
@@ -48,6 +50,31 @@ pub fn expected(got: &str, expected: &str, span: Span) -> RuntimeError {
 }
 
 impl Consumable for BuiltinArgs {
+    fn special(&mut self, id: &str) -> Result<usize, RuntimeError> {
+        if self.0.len() != 0 {
+            let item = self.0.remove(0);
+            match item.0 {
+                Value::Special(sid, value) => {
+                    if id == sid {
+                        Ok(value)
+                    } else {
+                        Err(expected(id, sid, item.1))
+                    }
+                }
+                _ => Err(expected(id, id, item.1)),
+            }
+        } else {
+            Err(RuntimeError {
+                msg: format!("too litte arguments supplied to builtin, expected {}", id)
+                    .red()
+                    .to_string(),
+                span: self.1.clone(),
+                help: None,
+                color: None,
+            })
+        }
+    }
+
     /// consumes the next argument as an integer, errors if the next argument is not an integer
     fn int(&mut self) -> Result<i32, RuntimeError> {
         if self.0.len() != 0 {
