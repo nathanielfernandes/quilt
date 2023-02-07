@@ -85,11 +85,7 @@ impl Expr {
                     bracket(")", br_depth)
                 ),
                 Value::Custom(s, id) => {
-                    format!(
-                        "<custom ref={} id={}>",
-                        s.yellow().to_string(),
-                        id.to_string().dimmed()
-                    )
+                    format!("<custom ref={} id={}>", s, id)
                 }
             },
             Expr::List(list) => format!(

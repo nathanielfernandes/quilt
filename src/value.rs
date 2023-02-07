@@ -21,7 +21,7 @@ pub enum Value {
     Color([u8; 4]),
     List(Vec<Value>),
     Pair(Box<Value>, Box<Value>),
-    Custom(String, usize),
+    Custom(&'static str, usize),
 }
 
 impl std::fmt::Display for Value {
