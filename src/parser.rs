@@ -144,6 +144,7 @@ peg::parser!(
             --
             KW("let") _ i:IDENT() _ "=" _ e:@  { Expr::Declaration(i, Box::new(e)) }
             KW("let") _ "[" _ i:COMMASEP(<IDENT()>) _ "]" _ "=" _ e:@  { Expr::MultiDeclaration(i, Box::new(e)) }
+            KW("let") _ "(" _ left:IDENT() _ "," _ right:IDENT() _ ")" _ "=" _ e:@  { Expr::MultiDeclaration(vec![left, right], Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Assignment(i, Box::new(e)) }
             --
             KW("fn") _ i:IDENT() _ "(" _ args:COMMASEP(<IDENT()>) _ ")" _ body:block() { Expr::Function(i, args, body) }

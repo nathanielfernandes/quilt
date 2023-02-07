@@ -243,6 +243,22 @@ impl<Data> VM<Data> {
                         }
                         Ok(Value::None)
                     }
+                    Value::Pair(left, right) => {
+                        if names.len() != 2 {
+                            return Err(RuntimeError {
+                                msg: format!("Tried to unpack pair into {} variables", names.len())
+                                    .red()
+                                    .to_string(),
+                                span: expr.1,
+                                help: None,
+                                color: None,
+                            });
+                        }
+                        self.declare(&names[0], *left);
+                        self.declare(&names[1], *right);
+                        Ok(Value::None)
+                    }
+
                     _ => {
                         return Err(RuntimeError {
                             msg: format!(
