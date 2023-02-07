@@ -77,6 +77,20 @@ impl Expr {
                 Value::List(_) => {
                     format!("{}...{}", bracket("[", br_depth), bracket("]", br_depth))
                 }
+                Value::Pair(left, right) => format!(
+                    "{}{}, {}{}",
+                    bracket("(", br_depth),
+                    left.to_string(),
+                    right.to_string(),
+                    bracket(")", br_depth)
+                ),
+                Value::Custom(s, id) => {
+                    format!(
+                        "<custom ref={} id={}>",
+                        s.yellow().to_string(),
+                        id.to_string().dimmed()
+                    )
+                }
             },
             Expr::List(list) => format!(
                 "{}{}{}",
@@ -86,6 +100,13 @@ impl Expr {
                     .collect::<Vec<String>>()
                     .join(", "),
                 bracket("]", br_depth)
+            ),
+            Expr::Pair(left, right) => format!(
+                "{}{}, {}{}",
+                bracket("(", br_depth),
+                left.0.to_string(depth, br_depth + 1),
+                right.0.to_string(depth, br_depth + 1),
+                bracket(")", br_depth)
             ),
             Expr::Ident(ident) => ident.red().to_string(),
             Expr::Yoink(ident) => format!("{}{}", "$".purple(), ident.red().to_string()),

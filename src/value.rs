@@ -10,6 +10,7 @@
 /// * `Str`: A string value
 /// * `Color`: A color value
 /// * `List`: A list of values
+/// * `Custom`: A custom value
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     None,
@@ -19,6 +20,8 @@ pub enum Value {
     Str(String),
     Color([u8; 4]),
     List(Vec<Value>),
+    Pair(Box<Value>, Box<Value>),
+    Custom(String, usize),
 }
 
 impl std::fmt::Display for Value {
@@ -31,6 +34,8 @@ impl std::fmt::Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
             Value::List(l) => write!(f, "{:?}", l),
+            Value::Pair(l, r) => write!(f, "({}, {})", l, r),
+            Value::Custom(s, id) => write!(f, "<custom ref={} id={}>", s, id),
         }
     }
 }
@@ -46,6 +51,8 @@ impl Value {
             Value::Str(_) => "str",
             Value::Color(_) => "color",
             Value::List(_) => "list",
+            Value::Pair(_, _) => "pair",
+            Value::Custom(_, _) => "custom",
         }
     }
 }

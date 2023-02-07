@@ -25,6 +25,8 @@ pub type Spanned<T> = (T, Span);
 pub enum Expr {
     Literal(Value),
     List(Vec<Spanned<Expr>>),
+    Pair(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+
     Ident(String),
     Yoink(String),
     Declaration(String, Box<Spanned<Expr>>),
@@ -173,6 +175,9 @@ peg::parser!(
             "-" _ e:@ { Expr::Unary(Op::Neg, Box::new(e)) }
             --
             "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::List(e) }
+            "[" _ e:COMMASEP(<literal()>) _ "]" { Expr::Literal(Value::List(e)) }
+            "(" _ l:expr() _ "," _ r:expr() _ ")" { Expr::Pair(Box::new(l), Box::new(r)) }
+            "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(Value::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::BuiltinCall(i, args) }
             i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::Call(i, args) }
             l:literal() { Expr::Literal(l) }

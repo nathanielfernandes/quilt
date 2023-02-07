@@ -29,6 +29,7 @@ pub trait Consumable {
     fn str(&mut self) -> Result<String, RuntimeError>;
     fn color(&mut self) -> Result<[u8; 4], RuntimeError>;
     fn list(&mut self) -> Result<Vec<Value>, RuntimeError>;
+    fn pair(&mut self) -> Result<(Value, Value), RuntimeError>;
     fn rest(&mut self) -> Result<Vec<Value>, RuntimeError>;
     fn any(&mut self) -> Result<Value, RuntimeError>;
     fn stop(&mut self) -> Result<(), RuntimeError>;
@@ -246,6 +247,32 @@ impl Consumable for BuiltinArgs {
         } else {
             Err(RuntimeError {
                 msg: "too litte arguments supplied to builtin, expected list"
+                    .red()
+                    .to_string(),
+                span: self.1.clone(),
+                help: None,
+                color: None,
+            })
+        }
+    }
+
+    fn pair(&mut self) -> Result<(Value, Value), RuntimeError> {
+        if self.0.len() != 0 {
+            let item = self.0.remove(0);
+            match item.0 {
+                Value::Pair(l, r) => Ok((*l, *r)),
+                _ => Err(RuntimeError {
+                    msg: format!("expected pair, got {}", item.0.ntype().cyan())
+                        .yellow()
+                        .to_string(),
+                    span: item.1,
+                    help: None,
+                    color: Some(Color::Yellow),
+                }),
+            }
+        } else {
+            Err(RuntimeError {
+                msg: "too litte arguments supplied to builtin, expected pair"
                     .red()
                     .to_string(),
                 span: self.1.clone(),

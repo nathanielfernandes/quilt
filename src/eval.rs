@@ -210,6 +210,10 @@ impl<Data> VM<Data> {
                     .map(|item| self.eval_expr(item))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
+            Expr::Pair(left, right) => Ok(Value::Pair(
+                Box::new(self.eval_expr(*left)?),
+                Box::new(self.eval_expr(*right)?),
+            )),
             Expr::Declaration(name, value) => {
                 let value = self.eval_expr(*value)?;
                 self.declare(&name, value);
