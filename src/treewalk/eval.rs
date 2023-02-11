@@ -43,7 +43,7 @@ impl Default for VMOpts {
             loop_min: 0,
             loop_max: 256,
 
-            max_runtime: Duration::from_micros(5).into(),
+            max_runtime: Some(Duration::from_secs(5)),
         }
     }
 }
