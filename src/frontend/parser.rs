@@ -39,6 +39,13 @@ pub enum Expr {
     Function(String, Vec<String>, Vec<Spanned<Expr>>),
     Call(Spanned<String>, Vec<Spanned<Expr>>),
     BuiltinCall(Spanned<String>, Vec<Spanned<Expr>>),
+
+    ForLoop(
+        Spanned<String>,
+        Box<Spanned<Expr>>,
+        Box<Spanned<Expr>>,
+        Vec<Spanned<Expr>>,
+    ),
 }
 
 /// A type that represents an operator in Quilt
@@ -144,6 +151,8 @@ peg::parser!(
             KW("fn") _ i:IDENT() _ "(" _ args:COMMASEP(<IDENT()>) _ ")" _ body:block() { Expr::Function(i, args, body) }
             --
             KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
+            --
+            KW("for") _ i:spanned(<IDENT()>) _ "in" _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::ForLoop(i, Box::new(start), Box::new(end), body) }
             --
             x:(@) _ "&&" _ y:@ { Expr::Binary(Op::And, Box::new(x), Box::new(y)) }
             x:(@) _ "||" _ y:@ { Expr::Binary(Op::Or, Box::new(x), Box::new(y)) }

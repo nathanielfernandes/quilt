@@ -1,4 +1,7 @@
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use ariadne::Color;
 use colored::Colorize;
@@ -10,6 +13,40 @@ use crate::{
     prelude::RuntimeError,
     shared::{Span, Spanned, Value},
 };
+
+/// Options for the VM
+/// ### Fields
+/// * `max_expr_depth` - the maximum depth of an expression
+/// * `max_call_stack` - the maximum depth of the call stack
+/// * `max_loops` - the maximum number of loops that can be executed in a run
+/// * `loop_min` - the minimum value of a loop
+/// * `loop_max` - the maximum value of a loop
+/// * `max_runtime` - the maximum runtime of a run
+pub struct VMOpts {
+    pub max_expr_depth: usize,
+    pub max_call_stack: usize,
+    pub max_loops: usize,
+
+    pub loop_min: i32,
+    pub loop_max: i32,
+
+    pub max_runtime: Option<Duration>,
+}
+
+impl Default for VMOpts {
+    fn default() -> Self {
+        Self {
+            max_expr_depth: 25,
+            max_call_stack: 5,
+            max_loops: 2,
+
+            loop_min: 0,
+            loop_max: 256,
+
+            max_runtime: Duration::from_micros(5).into(),
+        }
+    }
+}
 
 /// Type that represents a runtime Function in the VM
 /// ### Fields
@@ -44,6 +81,12 @@ pub struct VM<Data> {
     /// Can be used to store any state the VM needs to access
     pub data: Data,
     pub builtins: BuiltinFnMap<Data>,
+
+    start: Instant,
+    loop_count: usize,
+    depth: usize,
+
+    pub options: VMOpts,
 }
 
 impl<Data> VM<Data> {
@@ -54,6 +97,28 @@ impl<Data> VM<Data> {
             functions: FxHashMap::default(),
             data,
             builtins: BuiltinFnMap::default(),
+
+            start: Instant::now(),
+            loop_count: 0,
+            depth: 0,
+
+            options: VMOpts::default(),
+        }
+    }
+
+    pub fn new_with_opts(data: Data, options: VMOpts) -> Self {
+        Self {
+            frames: vec![FxHashMap::default()],
+            functions: FxHashMap::default(),
+            data,
+            builtins: BuiltinFnMap::default(),
+
+            start: Instant::now(),
+
+            loop_count: 0,
+            depth: 0,
+
+            options,
         }
     }
 
@@ -142,9 +207,14 @@ impl<Data> VM<Data> {
     ///
     /// ⚠️ *The maximum stack size is 5* ⚠️
     pub fn push_frame(&mut self, span: Span) -> Result<(), RuntimeError> {
-        if self.frames.len() >= 5 {
+        if self.frames.len() >= self.options.max_call_stack {
             return Err(RuntimeError {
-                msg: "Maximum call stack size exceeded".red().to_string(),
+                msg: format!(
+                    "Maximum call stack size exceeded ({})",
+                    self.options.max_call_stack
+                )
+                .red()
+                .to_string(),
                 span,
                 help: None,
                 color: None,
@@ -165,20 +235,20 @@ impl<Data> VM<Data> {
     ///
     /// ### Errors
     /// If the variable is not declared
-    pub fn set(&mut self, name: Spanned<String>, value: Value) -> Result<(), RuntimeError> {
+    pub fn set(&mut self, name: &String, value: Value, span: Span) -> Result<(), RuntimeError> {
         for frame in self.frames.iter_mut().rev() {
-            if let Some(result) = frame.get_mut(&name.0) {
+            if let Some(result) = frame.get_mut(name) {
                 *result = value;
                 return Ok(());
             }
         }
         Err(RuntimeError {
-            msg: format!("Variable '{}' is not declared", name.0)
+            msg: format!("Variable '{}' is not declared", name)
                 .red()
                 .to_string(),
-            span: name.1,
+            span,
             help: Some(
-                format!("declare it with 'let {} = ...'", name.0)
+                format!("declare it with 'let {} = ...'", name)
                     .yellow()
                     .to_string(),
             ),
@@ -188,6 +258,7 @@ impl<Data> VM<Data> {
 
     /// evals a list of expressions (ast)
     pub fn eval(&mut self, ast: Vec<Spanned<Expr>>) -> Result<Value, RuntimeError> {
+        self.start = Instant::now();
         let mut result = Value::None;
         for expr in ast {
             result = self.eval_expr(expr)?;
@@ -201,7 +272,36 @@ impl<Data> VM<Data> {
 
     /// evals a single expression
     pub fn eval_expr(&mut self, expr: Spanned<Expr>) -> Result<Value, RuntimeError> {
-        match expr.0 {
+        if let Some(max_runtime) = self.options.max_runtime {
+            if self.start.elapsed() > max_runtime {
+                return Err(RuntimeError {
+                    msg: format!("Maximum runtime exceeded ({:?})", max_runtime)
+                        .red()
+                        .to_string(),
+                    span: expr.1,
+                    help: None,
+                    color: None,
+                });
+            }
+        }
+
+        if self.depth > self.options.max_expr_depth {
+            return Err(RuntimeError {
+                msg: format!(
+                    "Maximum expression depth exceeded ({})",
+                    self.options.max_expr_depth
+                )
+                .red()
+                .to_string(),
+                span: expr.1,
+                help: None,
+                color: None,
+            });
+        }
+
+        self.depth += 1;
+
+        let result = match expr.0 {
             Expr::Literal(l) => Ok(l),
             Expr::Ident(name) => self.get((name, expr.1)),
             Expr::Yoink(name) => self.remove((name, expr.1)),
@@ -225,7 +325,7 @@ impl<Data> VM<Data> {
                 match value {
                     Value::List(items) => {
                         if items.len() != names.len() {
-                            return Err(RuntimeError {
+                            Err(RuntimeError {
                                 msg: format!(
                                     "Expected {} items in list, got {}",
                                     names.len(),
@@ -236,7 +336,7 @@ impl<Data> VM<Data> {
                                 span: expr.1,
                                 help: None,
                                 color: None,
-                            });
+                            })?;
                         }
 
                         for (name, value) in names.into_iter().zip(items) {
@@ -246,39 +346,38 @@ impl<Data> VM<Data> {
                     }
                     Value::Pair(left, right) => {
                         if names.len() != 2 {
-                            return Err(RuntimeError {
+                            Err(RuntimeError {
                                 msg: format!("Tried to unpack pair into {} variables", names.len())
                                     .red()
                                     .to_string(),
                                 span: expr.1,
                                 help: None,
                                 color: None,
-                            });
+                            })?;
                         }
                         self.declare(&names[0], *left);
                         self.declare(&names[1], *right);
                         Ok(Value::None)
                     }
 
-                    _ => {
-                        return Err(RuntimeError {
-                            msg: format!(
-                                "Cannot unpack {} into {} variables",
-                                value.ntype().cyan(),
-                                names.len()
-                            )
-                            .red()
-                            .to_string(),
-                            span: expr.1,
-                            help: None,
-                            color: Some(Color::Red),
-                        })
-                    }
+                    _ => Err(RuntimeError {
+                        msg: format!(
+                            "Cannot unpack {} into {} variables",
+                            value.ntype().cyan(),
+                            names.len()
+                        )
+                        .red()
+                        .to_string(),
+                        span: expr.1,
+                        help: None,
+                        color: Some(Color::Red),
+                    })?,
                 }
             }
             Expr::Assignment(name, value) => {
                 let value = self.eval_expr(*value)?;
-                self.set(name, value)?;
+                let (name, span) = name;
+                self.set(&name, value, span)?;
                 Ok(Value::None)
             }
             Expr::Binary(op, lhs, rhs) => {
@@ -371,7 +470,69 @@ impl<Data> VM<Data> {
 
                 Ok(result)
             }
+            Expr::ForLoop(name, start, end, body) => {
+                let start = self.eval_expr(*start)?;
+                let end = self.eval_expr(*end)?;
+
+                match (&start, &end) {
+                    (Value::Int(start), Value::Int(end)) => {
+                        self.eval_for_loop(name, *start, *end, body)
+                    }
+                    _ => Err(RuntimeError {
+                        msg: format!(
+                            "Expected integers for loop bounds, got {} and {}",
+                            start.ntype().cyan(),
+                            end.ntype().cyan()
+                        )
+                        .yellow()
+                        .to_string(),
+                        span: expr.1,
+                        help: None,
+                        color: Some(Color::Yellow),
+                    }),
+                }
+            }
+        };
+
+        self.depth -= 1;
+        result
+    }
+
+    pub fn eval_for_loop(
+        &mut self,
+        name: Spanned<String>,
+        start: i32,
+        end: i32,
+        body: Vec<Spanned<Expr>>,
+    ) -> Result<Value, RuntimeError> {
+        let mut result = Value::None;
+
+        for i in start.max(self.options.loop_min)..end.min(self.options.loop_max) {
+            if self.loop_count >= self.options.max_loops {
+                return Err(RuntimeError {
+                    msg: format!(
+                        "Loop limit of {} exceeded",
+                        self.options.max_loops.to_string().cyan()
+                    )
+                    .red()
+                    .to_string(),
+                    span: name.1,
+                    help: None,
+                    color: Some(Color::Red),
+                });
+            }
+
+            self.loop_count += 1;
+
+            self.declare(&name.0, Value::Int(i));
+            for expr in &body {
+                result = self.eval_expr(expr.clone())?;
+            }
+
+            self.loop_count -= 1;
         }
+
+        Ok(result)
     }
 
     /// Evaluate a function call
