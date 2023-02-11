@@ -1,8 +1,4 @@
-use crate::{
-    eval::RuntimeError,
-    parser::{Span, Spanned},
-    value::Value,
-};
+use crate::shared::{RuntimeError, Span, Spanned, Value};
 use ariadne::Color;
 use colored::Colorize;
 use fxhash::FxHashMap;

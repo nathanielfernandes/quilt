@@ -1,6 +1,6 @@
 use crate::{
-    parser::{Expr, Op, Spanned},
-    prelude::Value,
+    frontend::{Expr, Op},
+    shared::{Spanned, Value},
 };
 
 use colored::Colorize;

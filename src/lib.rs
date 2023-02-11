@@ -1,9 +1,12 @@
 pub mod builtins;
 pub mod debug;
-pub mod eval;
-pub mod parser;
+
 pub mod std;
-pub mod value;
+
+pub mod backend;
+pub mod frontend;
+pub mod shared;
+pub mod treewalk;
 
 /// The prelude module contains all the functions and types that are available to use.
 pub mod prelude {
@@ -14,12 +17,13 @@ pub mod prelude {
     pub use paste::paste;
 
     pub use crate::debug::*;
-    pub use crate::eval::*;
-    pub use crate::parser::*;
-    pub use crate::std::*;
-    pub use crate::value::*;
 
-    use self::parser::parse_code;
+    pub use crate::frontend::*;
+    pub use crate::shared::*;
+    pub use crate::std::*;
+    pub use crate::treewalk::*;
+
+    pub use self::parser::parser::parse_code;
 
     pub type AST = Vec<Spanned<Expr>>;
 

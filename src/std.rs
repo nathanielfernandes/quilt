@@ -2,7 +2,7 @@ use std::io::Write;
 
 use colored::Colorize;
 
-use crate::{eval::RuntimeError, generic_builtins, value::Value};
+use crate::{generic_builtins, shared::RuntimeError, shared::Value};
 
 generic_builtins! {
     [export=std]

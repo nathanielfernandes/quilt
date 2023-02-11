@@ -1,12 +1,6 @@
-use crate::value::Value;
-
-/// A type alias for a span
-pub type Span = std::ops::Range<usize>;
-/// A type alias for a spanned value
-pub type Spanned<T> = (T, Span);
+use crate::shared::{Spanned, Value};
 
 /// A type that represents an expression in Quilt
-///
 /// ### Variants
 /// * `Literal`: A literal value, holds a [`Value`]
 /// * `List`: A list of expressions, holds a [`Vec`] of [`Spanned`] expressions
@@ -89,8 +83,8 @@ peg::parser!(
         rule WHITESPACE()
             = [' ' | '\t' | '\u{09}' | '\u{0B}' | '\u{0C}' | '\u{20}' | '\u{A0}' ]
                 / "\\" TERM()
-        rule _  = quiet!{ (WHITESPACE() / TERMINATOR())* }
-        rule __ = quiet!{ (WHITESPACE() / TERMINATOR())+ }
+        rule _  = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT() )* }
+        rule __ = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT() )+ }
 
         rule COMMASEP<T>(x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ** ",") ","? _ {v}
 
@@ -194,7 +188,7 @@ peg::parser!(
         = _ e:expr() _ { e }
 
         pub rule parse_code() -> Vec<Spanned<Expr>>
-        = _ code:(x:parse() ** (";"/"\n"/_)) _ {code}
+        = _ code:(x:parse() ** (";"/"\n"/_))? _ {code.unwrap_or_default()}
     }
 );
 
