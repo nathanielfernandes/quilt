@@ -5,6 +5,7 @@ pub mod std;
 
 pub mod backend;
 pub mod frontend;
+pub mod imports;
 pub mod shared;
 pub mod treewalk;
 
@@ -19,6 +20,7 @@ pub mod prelude {
     pub use crate::debug::*;
 
     pub use crate::frontend::*;
+    pub use crate::imports::*;
     pub use crate::shared::*;
     pub use crate::std::*;
     pub use crate::treewalk::*;

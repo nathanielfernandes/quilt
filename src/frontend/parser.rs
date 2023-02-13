@@ -15,6 +15,8 @@ use crate::shared::{Spanned, Value};
 /// * `Function`: A function, holds the name of the function as a [`String`], the arguments as a [`Vec`] of [`String`]s, and the body as a [`Vec`] of [`Spanned`] expressions
 /// * `Call`: A function call, holds the name of the function as a [`Spanned`] [`String`] and the arguments as a [`Vec`] of [`Spanned`] expressions
 /// * `BuiltinCall`: A builtin function call, holds the name of the builtin function as a [`Spanned`] [`String`] and the arguments as a [`Vec`] of [`Spanned`] expressions
+/// * `ForLoop`: A for loop, holds the name of the variable as a [`Spanned`] [`String`], the start value as a [`Spanned`] expression, the end value as a [`Spanned`] expression, and the body as a [`Vec`] of [`Spanned`] expressions
+/// * `Import`: An import, holds the name of the module as a [`String`]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal(Value),
@@ -46,6 +48,8 @@ pub enum Expr {
         Box<Spanned<Expr>>,
         Vec<Spanned<Expr>>,
     ),
+
+    Import(String, Option<Vec<Spanned<Expr>>>),
 }
 
 /// A type that represents an operator in Quilt
@@ -112,7 +116,7 @@ peg::parser!(
             / expected!("float")
 
         rule HEX() -> [u8; 4]
-        = "#" s:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) {?
+        = ("#" / "0x")  s:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) {?
             if let Some(c) = hex_to_rgba(s) {
                 Ok(c)
             } else {
@@ -153,6 +157,8 @@ peg::parser!(
             KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
             --
             KW("for") _ i:spanned(<IDENT()>) _ "in" _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::ForLoop(i, Box::new(start), Box::new(end), body) }
+            --
+            KW("import") _ s:STRING() { Expr::Import(s, None) }
             --
             x:(@) _ "&&" _ y:@ { Expr::Binary(Op::And, Box::new(x), Box::new(y)) }
             x:(@) _ "||" _ y:@ { Expr::Binary(Op::Or, Box::new(x), Box::new(y)) }

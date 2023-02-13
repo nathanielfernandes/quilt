@@ -302,6 +302,24 @@ impl<Data> VM<Data> {
         self.depth += 1;
 
         let result = match expr.0 {
+            Expr::Import(namespace, block) => {
+                if let Some(block) = block {
+                    let mut result = Value::None;
+                    for expr in block {
+                        result = self.eval_expr(expr)?;
+                    }
+                    Ok(result)
+                } else {
+                    Err(RuntimeError {
+                        msg: format!("Unresolved import: '{}'", namespace)
+                            .red()
+                            .to_string(),
+                        span: expr.1,
+                        help: Some("Only top level imports are supported".yellow().to_string()),
+                        color: None,
+                    })
+                }
+            }
             Expr::Literal(l) => Ok(l),
             Expr::Ident(name) => self.get((name, expr.1)),
             Expr::Yoink(name) => self.remove((name, expr.1)),

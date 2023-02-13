@@ -126,6 +126,7 @@ impl Expr {
 
                 s
             }
+            Expr::Import(path, _) => format!("{} {}", "import".purple(), path.green().to_string()),
             Expr::Pair(left, right) => format!(
                 "{}{}, {}{}",
                 bracket("(", br_depth),
