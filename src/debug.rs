@@ -126,7 +126,9 @@ impl Expr {
 
                 s
             }
-            Expr::Import(path, _) => format!("{} {}", "import".purple(), path.green().to_string()),
+            Expr::Import(path, _) => {
+                format!("{} {}", "import".purple(), path.0.green().to_string())
+            }
             Expr::Pair(left, right) => format!(
                 "{}{}, {}{}",
                 bracket("(", br_depth),
@@ -139,7 +141,7 @@ impl Expr {
             Expr::Declaration(name, value) => format!(
                 "{} {} = {}",
                 "let".purple(),
-                name.red().to_string(),
+                name.0.red().to_string(),
                 value.0.to_string(depth, br_depth)
             ),
             Expr::MultiDeclaration(names, value) => format!(
@@ -147,7 +149,7 @@ impl Expr {
                 "let".purple(),
                 names
                     .iter()
-                    .map(|n| n.red().to_string())
+                    .map(|n| n.0.red().to_string())
                     .collect::<Vec<String>>()
                     .join(", "),
                 value.0.to_string(depth, br_depth)
@@ -172,9 +174,14 @@ impl Expr {
                 let mut s = format!(
                     "{} {}{}{}{}",
                     "fn".purple(),
-                    name.blue().to_string(),
+                    name.0.blue().to_string(),
                     bracket("(", br_depth),
-                    args.join(", ").red().to_string(),
+                    args.into_iter()
+                        .map(|a| a.0.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                        .red()
+                        .to_string(),
                     bracket(")", br_depth)
                 );
 

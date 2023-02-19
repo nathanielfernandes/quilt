@@ -55,7 +55,7 @@ impl Default for VMOpts {
 ///
 #[derive(Clone, Debug)]
 pub(crate) struct Function {
-    pub args: Vec<String>,
+    pub args: Vec<Spanned<String>>,
     pub body: Vec<Spanned<Expr>>,
 }
 
@@ -311,10 +311,10 @@ impl<Data> VM<Data> {
                     Ok(result)
                 } else {
                     Err(RuntimeError {
-                        msg: format!("Unresolved import: '{}'", namespace)
+                        msg: format!("Unresolved import: '{}'", namespace.0)
                             .red()
                             .to_string(),
-                        span: expr.1,
+                        span: namespace.1,
                         help: Some("Only top level imports are supported".yellow().to_string()),
                         color: None,
                     })
@@ -335,7 +335,7 @@ impl<Data> VM<Data> {
             )),
             Expr::Declaration(name, value) => {
                 let value = self.eval_expr(*value)?;
-                self.declare(&name, value);
+                self.declare(&name.0, value);
                 Ok(Value::None)
             }
             Expr::MultiDeclaration(names, value) => {
@@ -358,7 +358,7 @@ impl<Data> VM<Data> {
                         }
 
                         for (name, value) in names.into_iter().zip(items) {
-                            self.declare(&name, value);
+                            self.declare(&name.0, value);
                         }
                         Ok(Value::None)
                     }
@@ -373,8 +373,8 @@ impl<Data> VM<Data> {
                                 color: None,
                             })?;
                         }
-                        self.declare(&names[0], *left);
-                        self.declare(&names[1], *right);
+                        self.declare(&names[0].0, *left);
+                        self.declare(&names[1].0, *right);
                         Ok(Value::None)
                     }
 
@@ -437,7 +437,7 @@ impl<Data> VM<Data> {
             }
             Expr::Function(name, args, body) => {
                 self.functions
-                    .insert(name, Rc::new(Function { args, body }));
+                    .insert(name.0, Rc::new(Function { args, body }));
                 Ok(Value::None)
             }
             Expr::Call(name, args) => self.eval_function(name, args),
@@ -573,7 +573,7 @@ impl<Data> VM<Data> {
                 .zip(values.into_iter())
                 .for_each(|(name, value)| {
                     if let Some(result) = self.frames.last_mut() {
-                        result.insert(name.to_string(), value);
+                        result.insert(name.0.to_string(), value);
                     }
                 });
 

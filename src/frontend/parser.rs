@@ -25,8 +25,8 @@ pub enum Expr {
 
     Ident(String),
     Yoink(String),
-    Declaration(String, Box<Spanned<Expr>>),
-    MultiDeclaration(Vec<String>, Box<Spanned<Expr>>),
+    Declaration(Spanned<String>, Box<Spanned<Expr>>),
+    MultiDeclaration(Vec<Spanned<String>>, Box<Spanned<Expr>>),
     Assignment(Spanned<String>, Box<Spanned<Expr>>),
 
     Binary(Op, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -38,7 +38,7 @@ pub enum Expr {
         Option<Vec<Spanned<Expr>>>,
     ),
 
-    Function(String, Vec<String>, Vec<Spanned<Expr>>),
+    Function(Spanned<String>, Vec<Spanned<String>>, Vec<Spanned<Expr>>),
     Call(Spanned<String>, Vec<Spanned<Expr>>),
     BuiltinCall(Spanned<String>, Vec<Spanned<Expr>>),
 
@@ -49,7 +49,7 @@ pub enum Expr {
         Vec<Spanned<Expr>>,
     ),
 
-    Import(String, Option<Vec<Spanned<Expr>>>),
+    Import(Spanned<String>, Option<Vec<Spanned<Expr>>>),
 }
 
 /// A type that represents an operator in Quilt
@@ -99,7 +99,7 @@ peg::parser!(
 
         rule COMMASEP<T>(x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ** ",") ","? _ {v}
 
-        rule KW(id: &str) = ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_']
+        rule KW(id: &str) = ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_'] _ { () }
 
         rule IDENT() -> String
         = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {
@@ -147,18 +147,18 @@ peg::parser!(
         = precedence! {
             start:position!() e:(@) end:position!() { (e, start..end) }
             --
-            KW("let") _ i:IDENT() _ "=" _ e:@  { Expr::Declaration(i, Box::new(e)) }
-            KW("let") _ "[" _ i:COMMASEP(<IDENT()>) _ "]" _ "=" _ e:@  { Expr::MultiDeclaration(i, Box::new(e)) }
-            KW("let") _ "(" _ left:IDENT() _ "," _ right:IDENT() _ ")" _ "=" _ e:@  { Expr::MultiDeclaration(vec![left, right], Box::new(e)) }
+            KW("let") _ i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Declaration(i, Box::new(e)) }
+            KW("let") _ "[" _ i:COMMASEP(<spanned(<IDENT()>)>) _ "]" _ "=" _ e:@  { Expr::MultiDeclaration(i, Box::new(e)) }
+            KW("let") _ "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ "=" _ e:@  { Expr::MultiDeclaration(vec![left, right], Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Assignment(i, Box::new(e)) }
             --
-            KW("fn") _ i:IDENT() _ "(" _ args:COMMASEP(<IDENT()>) _ ")" _ body:block() { Expr::Function(i, args, body) }
+            KW("fn") _ i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block() { Expr::Function(i, args, body) }
             --
             KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
             --
             KW("for") _ i:spanned(<IDENT()>) _ "in" _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::ForLoop(i, Box::new(start), Box::new(end), body) }
             --
-            KW("import") _ s:STRING() { Expr::Import(s, None) }
+            KW("import") _ s:spanned(<STRING()>) { Expr::Import(s, None) }
             --
             x:(@) _ "&&" _ y:@ { Expr::Binary(Op::And, Box::new(x), Box::new(y)) }
             x:(@) _ "||" _ y:@ { Expr::Binary(Op::Or, Box::new(x), Box::new(y)) }
@@ -211,7 +211,12 @@ peg::parser!(
 fn hex_to_rgba(hex: &str) -> Option<[u8; 4]> {
     let hex = hex.trim_start_matches('#');
 
-    if hex.len() < 6 || hex.len() > 8 {
+    if hex.len() == 3 {
+        let r = u8::from_str_radix(&hex[0..1], 16).unwrap_or(0);
+        let g = u8::from_str_radix(&hex[1..2], 16).unwrap_or(0);
+        let b = u8::from_str_radix(&hex[2..3], 16).unwrap_or(0);
+        return Some([r * 17, g * 17, b * 17, 255]);
+    } else if hex.len() < 6 || hex.len() > 8 {
         return None;
     }
 
