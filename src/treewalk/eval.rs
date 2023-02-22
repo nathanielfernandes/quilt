@@ -10,7 +10,7 @@ use fxhash::FxHashMap;
 use crate::{
     builtins::{BuiltinAdder, BuiltinFnMap},
     frontend::{Expr, Op},
-    prelude::RuntimeError,
+    prelude::{BuiltinFn, BuiltinFnReg, RuntimeError},
     shared::{Span, Spanned, Value},
 };
 
@@ -441,6 +441,53 @@ impl<Data> VM<Data> {
                 Ok(Value::None)
             }
             Expr::Call(name, args) => self.eval_function(name, args),
+            Expr::ContextWrapped((func, span), args, varname, body) => {
+                if let Some(ctxfunc) = self.builtins.get(&func) {
+                    match ctxfunc {
+                        BuiltinFn::Fn(func) => {
+                            let res = self.eval_builtin_inner((*func, span), args)?;
+
+                            if let Some(varname) = varname {
+                                self.declare(&varname.0, res);
+                            }
+
+                            let mut result = (Value::None, 0..0);
+                            for expr in body {
+                                result = (self.eval_expr(expr.clone())?, expr.1);
+                            }
+
+                            Ok(result.0)
+                        }
+                        BuiltinFn::Context(before, after) => {
+                            let after = *after;
+
+                            let res = self.eval_builtin_inner((*before, span.clone()), args)?;
+
+                            if let Some(varname) = varname {
+                                self.declare(&varname.0, res);
+                            }
+
+                            let mut result = (Value::None, 0..0);
+                            for expr in body {
+                                result = (self.eval_expr(expr.clone())?, expr.1);
+                            }
+
+                            let result = (Expr::Literal(result.0), result.1);
+
+                            self.eval_builtin_inner((after, span), vec![result])
+                        }
+                    }
+                } else {
+                    Err(RuntimeError {
+                        msg: format!("Unknown builtin function {}", func.cyan())
+                            .red()
+                            .to_string(),
+                        span,
+                        help: None,
+                        color: Some(Color::Red),
+                    })
+                }
+            }
             Expr::BuiltinCall(name, args) => self.eval_builtin(name, args),
             Expr::Conditional(cond, then, otherwise) => {
                 let cond = self.eval_expr(*cond)?;
@@ -553,6 +600,30 @@ impl<Data> VM<Data> {
         Ok(result)
     }
 
+    pub fn eval_builtin_inner(
+        &mut self,
+        (func, span): Spanned<BuiltinFnReg<Data>>,
+        args: Vec<Spanned<Expr>>,
+    ) -> Result<Value, RuntimeError> {
+        let (s, mut e) = (span.start, span.end);
+
+        let values = args
+            .into_iter()
+            .map(|v| {
+                let span = v.1.clone();
+                e = e.max(span.end);
+                Ok((self.eval_expr(v)?, span))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let result = (func)(
+            &mut self.data,
+            &mut (values, s.saturating_sub(1)..e.saturating_add(1)),
+        )?;
+
+        Ok(result)
+    }
+
     /// Evaluate a function call
     pub fn eval_function(
         &mut self,
@@ -605,30 +676,29 @@ impl<Data> VM<Data> {
     /// evals a builtin function call
     pub fn eval_builtin(
         &mut self,
-        name: Spanned<String>,
+        (name, span): Spanned<String>,
         values: Vec<Spanned<Expr>>,
     ) -> Result<Value, RuntimeError> {
-        let (s, mut e) = (name.1.start, name.1.end);
-        let values = values
-            .into_iter()
-            .map(|v| {
-                let span = v.1.clone();
-                e = e.max(span.end);
-                Ok((self.eval_expr(v)?, span))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if let Some(func) = self.builtins.get(&name.0) {
-            (func)(
-                &mut self.data,
-                &mut (values, s.saturating_sub(1)..e.saturating_add(1)),
-            )
+        if let Some(func) = self.builtins.get(&name) {
+            match func {
+                BuiltinFn::Fn(func) => self.eval_builtin_inner((*func, span), values),
+                BuiltinFn::Context(_, _) => {
+                    return Err(RuntimeError {
+                        msg: format!("'{}' can only called with 'with'", name)
+                            .red()
+                            .to_string(),
+                        span: span,
+                        help: Some("use 'with' to call this function".yellow().to_string()),
+                        color: None,
+                    })
+                }
+            }
         } else {
             Err(RuntimeError {
-                msg: format!("Outbound '{}' is not defined", name.0)
+                msg: format!("Outbound '{}' is not defined", name)
                     .red()
                     .to_string(),
-                span: name.1,
+                span: span,
                 help: None,
                 color: None,
             })

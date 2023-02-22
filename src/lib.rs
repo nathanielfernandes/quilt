@@ -13,8 +13,10 @@ pub mod treewalk;
 pub mod prelude {
     pub use crate::builtins::*;
 
+    pub use crate::context_builtins;
     pub use crate::generic_builtins;
     pub use crate::specific_builtins;
+
     pub use paste::paste;
 
     pub use crate::debug::*;

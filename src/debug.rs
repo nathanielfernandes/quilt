@@ -272,6 +272,7 @@ impl Expr {
 
                 s
             }
+            _ => "unimplemented".to_string(),
         }
     }
 }

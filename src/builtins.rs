@@ -7,7 +7,13 @@ use fxhash::FxHashMap;
 pub type BuiltinArgs = Spanned<Vec<Spanned<Value>>>;
 
 /// a type alias representing a builtin function
-pub type BuiltinFn<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, RuntimeError>;
+pub type BuiltinFnReg<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, RuntimeError>;
+
+pub enum BuiltinFn<Data> {
+    /// a builtin function that takes a [`BuiltinArgs`] and returns a [`Value`]
+    Fn(BuiltinFnReg<Data>),
+    Context(BuiltinFnReg<Data>, BuiltinFnReg<Data>),
+}
 
 /// a type alias representing a map of builtin functions
 pub type BuiltinFnMap<Data> = FxHashMap<String, BuiltinFn<Data>>;
@@ -354,35 +360,35 @@ macro_rules! generic_builtins {
             fn @$name:ident($($arg:ident: $type:ident),*) $body:block)*
     } => {
            $(
-               pub fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<Value, RuntimeError> {
-                    use crate::builtins::Consumable;
+                pub fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<Value, RuntimeError> {
+                        use crate::builtins::Consumable;
 
-                    #[allow(unused_macros)]
-                    macro_rules! error {
-                        ($msg:expr) => {
-                            Err(RuntimeError {
-                                msg: $msg,
-                                span: args.1.clone(),
-                                help: None,
-                                color: None,
-                            })?
-                        };
-                    }
+                        #[allow(unused_macros)]
+                        macro_rules! error {
+                            ($msg:expr) => {
+                                Err(RuntimeError {
+                                    msg: $msg,
+                                    span: args.1.clone(),
+                                    help: None,
+                                    color: None,
+                                })?
+                            };
+                        }
 
-                   $(
-                       let $arg = args.$type()?;
-                   )*
+                    $(
+                        let $arg = args.$type()?;
+                    )*
 
-                   args.stop()?;
-                   Ok($body)
-               }
+                    args.stop()?;
+                    Ok($body)
+                }
            )*
 
-           pub fn $group<Data>(map: &mut fxhash::FxHashMap<String, crate::builtins::BuiltinFn<Data>>) {
-               $(
-                   map.insert(String::from(stringify!($name)), $name);
-               )*
-           }
+            pub fn $group<Data>(map: &mut fxhash::FxHashMap<String, crate::builtins::BuiltinFn<Data>>) {
+                $(
+                    map.insert(String::from(stringify!($name)), crate::builtins::BuiltinFn::Fn($name));
+                )*
+            }
     };
 }
 
@@ -436,6 +442,89 @@ macro_rules! specific_builtins {
                    match fn_name.as_ref() {
                        $(
                            stringify!($name) => Some(concat!($($doc, '\n'), *)),
+                       )*
+                       _ => None,
+                   }
+               }
+           }
+    };
+}
+
+#[macro_export]
+macro_rules! context_builtins {
+    {
+        [type=$datatype:ty]
+        [export=$group:ident]
+        $(
+
+            $(#[doc = $start_doc:expr])*
+            fn @$start_name:ident($start_data:ident, $($arg:ident: $type:ident),*) $start_body:block
+
+            $(#[doc = $end_doc:expr])*
+            fn @$end_name:ident($end_data:ident, $end_arg:ident: $end_type:ident) $end_body:block
+
+        )*
+    } => {
+            use crate::prelude::*;
+
+           $(
+
+                $(#[doc = $start_doc])*
+                pub fn $start_name($start_data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, RuntimeError> {
+
+                    #[allow(unused_macros)]
+                    macro_rules! error {
+                        ($msg:expr) => {
+                            Err(RuntimeError {
+                                msg: $msg,
+                                span: args.1.clone(),
+                                help: None,
+                                color: None,
+                            })?
+                        };
+                    }
+
+                   $(
+                       let $arg = args.$type()?;
+                   )*
+
+                   args.stop()?;
+                   Ok($start_body)
+                }
+
+                $(#[doc = $end_doc])*
+                pub fn $end_name($end_data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, RuntimeError> {
+
+                    #[allow(unused_macros)]
+                    macro_rules! error {
+                        ($msg:expr) => {
+                            Err(RuntimeError {
+                                msg: $msg,
+                                span: args.1.clone(),
+                                help: None,
+                                color: None,
+                            })?
+                        };
+                    }
+
+                   let $end_arg = args.$end_type()?;
+
+                   args.stop()?;
+                   Ok($end_body)
+                }
+           )*
+
+           pub fn $group(map: &mut fxhash::FxHashMap<String, BuiltinFn<$datatype>>) {
+               $(
+                   map.insert(String::from(stringify!($start_name)), crate::builtins::BuiltinFn::Context($start_name, $end_name));
+               )*
+           }
+
+           paste! {
+               pub fn [< $group _doc >]<S: AsRef<str>>(fn_name: S) -> Option<&'static str> {
+                   match fn_name.as_ref() {
+                       $(
+                           stringify!($start_name) => Some(concat!($($start_doc, '\n'), *)),
                        )*
                        _ => None,
                    }
