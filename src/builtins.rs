@@ -433,7 +433,7 @@ macro_rules! specific_builtins {
 
            pub fn $group(map: &mut fxhash::FxHashMap<String, BuiltinFn<$datatype>>) {
                $(
-                   map.insert(String::from(stringify!($name)), $name);
+                   map.insert(String::from(stringify!($name)), BuiltinFn::Fn($name));
                )*
            }
 
@@ -457,11 +457,18 @@ macro_rules! context_builtins {
         [export=$group:ident]
         $(
 
-            $(#[doc = $start_doc:expr])*
-            fn @$start_name:ident($start_data:ident, $($arg:ident: $type:ident),*) $start_body:block
+            {
 
-            $(#[doc = $end_doc:expr])*
-            fn @$end_name:ident($end_data:ident, $end_arg:ident: $end_type:ident) $end_body:block
+                [enter]
+                $(#[doc = $start_doc:expr])*
+                fn @$start_name:ident($start_data:ident, $($arg:ident: $type:ident),*) $start_body:block
+
+                [exit]
+                $(#[doc = $end_doc:expr])*
+                fn @$end_name:ident($end_data:ident, $end_arg:ident: $end_type:ident) $end_body:block
+
+
+            }
 
         )*
     } => {
@@ -516,7 +523,7 @@ macro_rules! context_builtins {
 
            pub fn $group(map: &mut fxhash::FxHashMap<String, BuiltinFn<$datatype>>) {
                $(
-                   map.insert(String::from(stringify!($start_name)), crate::builtins::BuiltinFn::Context($start_name, $end_name));
+                   map.insert(String::from(stringify!($start_name)), BuiltinFn::Context($start_name, $end_name));
                )*
            }
 
