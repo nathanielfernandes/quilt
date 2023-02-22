@@ -10,7 +10,9 @@
 /// * `Str`: A string value
 /// * `Color`: A color value
 /// * `List`: A list of values
-/// * `Custom`: A custom value
+/// * `Pair`: A pair of values
+/// * `Spread`: A spread of values
+/// * `Special`: A custom value
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     None,
@@ -21,7 +23,7 @@ pub enum Value {
     Color([u8; 4]),
     List(Vec<Value>),
     Pair(Box<Value>, Box<Value>),
-
+    Spread(Vec<Value>),
     Special(&'static str, usize),
 }
 
@@ -36,6 +38,7 @@ impl std::fmt::Display for Value {
             Value::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
             Value::List(l) => write!(f, "{:?}", l),
             Value::Pair(l, r) => write!(f, "({}, {})", l, r),
+            Value::Spread(l) => write!(f, "...[{:?}]", l),
             Value::Special(s, id) => write!(f, "<special id={} value={}>", s, id),
         }
     }
@@ -53,6 +56,7 @@ impl Value {
             Value::Color(_) => "color",
             Value::List(_) => "list",
             Value::Pair(_, _) => "pair",
+            Value::Spread(_) => "spread",
             Value::Special(id, _) => id,
         }
     }

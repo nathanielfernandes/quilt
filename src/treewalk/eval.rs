@@ -153,20 +153,20 @@ impl<Data> VM<Data> {
     }
 
     /// Remove and get a variable from the current frame
-    pub fn remove(&mut self, name: Spanned<String>) -> Result<Value, RuntimeError> {
+    pub fn remove(&mut self, (name, span): Spanned<String>) -> Result<Value, RuntimeError> {
         for frame in self.frames.iter_mut().rev() {
-            if let Some(result) = frame.remove(&name.0) {
+            if let Some(result) = frame.remove(&name) {
                 return Ok(result);
             }
         }
 
         Err(RuntimeError {
-            msg: format!("Variable '{}' is not defined", name.0)
+            msg: format!("Variable '{}' is not defined", name)
                 .red()
                 .to_string(),
-            span: name.1,
+            span,
             help: Some(
-                format!("define it with 'let {} = ...'", name.0)
+                format!("define it with 'let {} = ...'", name)
                     .yellow()
                     .to_string(),
             ),
@@ -175,20 +175,20 @@ impl<Data> VM<Data> {
     }
 
     /// Gets a variable from the current frame
-    pub fn get(&self, name: Spanned<String>) -> Result<Value, RuntimeError> {
+    pub fn get(&self, (name, span): Spanned<String>) -> Result<Value, RuntimeError> {
         for frame in self.frames.iter().rev() {
-            if let Some(expr) = frame.get(&name.0) {
+            if let Some(expr) = frame.get(&name) {
                 return Ok(expr.clone());
             }
         }
 
         Err(RuntimeError {
-            msg: format!("Variable '{}' is not defined", name.0)
+            msg: format!("Variable '{}' is not defined", name)
                 .red()
                 .to_string(),
-            span: name.1,
+            span,
             help: Some(
-                format!("define it with 'let {} = ...'", name.0)
+                format!("define it with 'let {} = ...'", name)
                     .yellow()
                     .to_string(),
             ),
@@ -271,14 +271,14 @@ impl<Data> VM<Data> {
     }
 
     /// evals a single expression
-    pub fn eval_expr(&mut self, expr: Spanned<Expr>) -> Result<Value, RuntimeError> {
+    pub fn eval_expr(&mut self, (expr, span): Spanned<Expr>) -> Result<Value, RuntimeError> {
         if let Some(max_runtime) = self.options.max_runtime {
             if self.start.elapsed() > max_runtime {
                 return Err(RuntimeError {
                     msg: format!("Maximum runtime exceeded ({:?})", max_runtime)
                         .red()
                         .to_string(),
-                    span: expr.1,
+                    span,
                     help: None,
                     color: None,
                 });
@@ -293,7 +293,7 @@ impl<Data> VM<Data> {
                 )
                 .red()
                 .to_string(),
-                span: expr.1,
+                span,
                 help: None,
                 color: None,
             });
@@ -301,8 +301,8 @@ impl<Data> VM<Data> {
 
         self.depth += 1;
 
-        let result = match expr.0 {
-            Expr::Import(namespace, block) => {
+        let result = match expr {
+            Expr::Import((namespace, span), block) => {
                 if let Some(block) = block {
                     let mut result = Value::None;
                     for expr in block {
@@ -311,18 +311,18 @@ impl<Data> VM<Data> {
                     Ok(result)
                 } else {
                     Err(RuntimeError {
-                        msg: format!("Unresolved import: '{}'", namespace.0)
+                        msg: format!("Unresolved import: '{}'", namespace)
                             .red()
                             .to_string(),
-                        span: namespace.1,
+                        span,
                         help: Some("Only top level imports are supported".yellow().to_string()),
                         color: None,
                     })
                 }
             }
             Expr::Literal(l) => Ok(l),
-            Expr::Ident(name) => self.get((name, expr.1)),
-            Expr::Yoink(name) => self.remove((name, expr.1)),
+            Expr::Ident(name) => self.get((name, span)),
+            Expr::Yoink(name) => self.remove((name, span)),
             Expr::List(items) => Ok(Value::List(
                 items
                     .into_iter()
@@ -333,9 +333,9 @@ impl<Data> VM<Data> {
                 Box::new(self.eval_expr(*left)?),
                 Box::new(self.eval_expr(*right)?),
             )),
-            Expr::Declaration(name, value) => {
+            Expr::Declaration((name, _), value) => {
                 let value = self.eval_expr(*value)?;
-                self.declare(&name.0, value);
+                self.declare(&name, value);
                 Ok(Value::None)
             }
             Expr::MultiDeclaration(names, value) => {
@@ -351,14 +351,14 @@ impl<Data> VM<Data> {
                                 )
                                 .red()
                                 .to_string(),
-                                span: expr.1,
+                                span,
                                 help: None,
                                 color: None,
                             })?;
                         }
 
-                        for (name, value) in names.into_iter().zip(items) {
-                            self.declare(&name.0, value);
+                        for ((name, _), value) in names.into_iter().zip(items) {
+                            self.declare(&name, value);
                         }
                         Ok(Value::None)
                     }
@@ -368,7 +368,7 @@ impl<Data> VM<Data> {
                                 msg: format!("Tried to unpack pair into {} variables", names.len())
                                     .red()
                                     .to_string(),
-                                span: expr.1,
+                                span,
                                 help: None,
                                 color: None,
                             })?;
@@ -386,7 +386,7 @@ impl<Data> VM<Data> {
                         )
                         .red()
                         .to_string(),
-                        span: expr.1,
+                        span,
                         help: None,
                         color: Some(Color::Red),
                     })?,
@@ -401,7 +401,7 @@ impl<Data> VM<Data> {
             Expr::Binary(op, lhs, rhs) => {
                 let lhs = self.eval_expr(*lhs)?;
                 let rhs = self.eval_expr(*rhs)?;
-                self.eval_binary(op, lhs, rhs, expr.1)
+                self.eval_binary(op, lhs, rhs, span)
             }
             Expr::Unary(op, lhs) => {
                 let lhs = self.eval_expr(*lhs)?;
@@ -415,7 +415,7 @@ impl<Data> VM<Data> {
                             )
                             .yellow()
                             .to_string(),
-                            span: expr.1,
+                            span,
                             help: None,
                             color: Some(Color::Yellow),
                         }),
@@ -427,7 +427,22 @@ impl<Data> VM<Data> {
                             msg: format!("Cannot perform negation on type {}", lhs.ntype().cyan())
                                 .yellow()
                                 .to_string(),
-                            span: expr.1,
+                            span,
+                            help: None,
+                            color: Some(Color::Yellow),
+                        }),
+                    },
+                    Op::Spread => match lhs {
+                        Value::List(items) => Ok(Value::Spread(items)),
+                        Value::Pair(left, right) => Ok(Value::Spread(vec![*left, *right])),
+                        _ => Err(RuntimeError {
+                            msg: format!(
+                                "Cannot perform spread on non-list type {}",
+                                lhs.ntype().cyan()
+                            )
+                            .yellow()
+                            .to_string(),
+                            span,
                             help: None,
                             color: Some(Color::Yellow),
                         }),
@@ -526,7 +541,7 @@ impl<Data> VM<Data> {
                             )
                             .yellow()
                             .to_string(),
-                            span: expr.1,
+                            span,
                             help: None,
                             color: Some(Color::Yellow),
                         })
@@ -551,7 +566,7 @@ impl<Data> VM<Data> {
                         )
                         .yellow()
                         .to_string(),
-                        span: expr.1,
+                        span,
                         help: None,
                         color: Some(Color::Yellow),
                     }),
@@ -565,7 +580,7 @@ impl<Data> VM<Data> {
 
     pub fn eval_for_loop(
         &mut self,
-        name: Spanned<String>,
+        (name, span): Spanned<String>,
         start: i32,
         end: i32,
         body: Vec<Spanned<Expr>>,
@@ -581,7 +596,7 @@ impl<Data> VM<Data> {
                     )
                     .red()
                     .to_string(),
-                    span: name.1,
+                    span,
                     help: None,
                     color: Some(Color::Red),
                 });
@@ -589,7 +604,7 @@ impl<Data> VM<Data> {
 
             self.loop_count += 1;
 
-            self.declare(&name.0, Value::Int(i));
+            self.declare(&name, Value::Int(i));
             for expr in &body {
                 result = self.eval_expr(expr.clone())?;
             }
@@ -600,6 +615,22 @@ impl<Data> VM<Data> {
         Ok(result)
     }
 
+    pub fn eval_args(&mut self, args: Vec<Spanned<Expr>>) -> Result<Vec<Value>, RuntimeError> {
+        let mut values = Vec::with_capacity(args.len());
+
+        for arg in args {
+            let value = self.eval_expr(arg)?;
+
+            if let Value::Spread(vals) = value {
+                values.extend(vals);
+            } else {
+                values.push(value);
+            }
+        }
+
+        Ok(values)
+    }
+
     pub fn eval_builtin_inner(
         &mut self,
         (func, span): Spanned<BuiltinFnReg<Data>>,
@@ -607,14 +638,20 @@ impl<Data> VM<Data> {
     ) -> Result<Value, RuntimeError> {
         let (s, mut e) = (span.start, span.end);
 
-        let values = args
-            .into_iter()
-            .map(|v| {
-                let span = v.1.clone();
-                e = e.max(span.end);
-                Ok((self.eval_expr(v)?, span))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut values = Vec::with_capacity(args.len());
+
+        for (arg, aspan) in args {
+            e = e.max(aspan.end);
+            let value = self.eval_expr((arg, aspan.clone()))?;
+
+            if let Value::Spread(vals) = value {
+                for val in vals {
+                    values.push((val, aspan.clone()));
+                }
+            } else {
+                values.push((value, aspan));
+            }
+        }
 
         let result = (func)(
             &mut self.data,
@@ -627,24 +664,36 @@ impl<Data> VM<Data> {
     /// Evaluate a function call
     pub fn eval_function(
         &mut self,
-        name: Spanned<String>,
+        (name, span): Spanned<String>,
         values: Vec<Spanned<Expr>>,
     ) -> Result<Value, RuntimeError> {
-        let values = values
-            .into_iter()
-            .map(|v| self.eval_expr(v))
-            .collect::<Result<Vec<_>, _>>()?;
+        let values = self.eval_args(values)?;
 
-        if let Some(func) = self.functions.get(&name.0) {
+        if let Some(func) = self.functions.get(&name) {
+            if values.len() != func.args.len() {
+                return Err(RuntimeError {
+                    msg: format!(
+                        "Expected {} arguments, got {}",
+                        func.args.len().to_string().cyan(),
+                        values.len().to_string().cyan()
+                    )
+                    .yellow()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Yellow),
+                });
+            }
+
             let func = func.clone();
-            self.push_frame(name.1)?;
+            self.push_frame(span)?;
 
             func.args
                 .iter()
                 .zip(values.into_iter())
-                .for_each(|(name, value)| {
+                .for_each(|((name, _), value)| {
                     if let Some(result) = self.frames.last_mut() {
-                        result.insert(name.0.to_string(), value);
+                        result.insert(name.to_string(), value);
                     }
                 });
 
@@ -659,12 +708,12 @@ impl<Data> VM<Data> {
             Ok(result)
         } else {
             Err(RuntimeError {
-                msg: format!("Function '{}' is not defined", name.0)
+                msg: format!("Function '{}' is not defined", name)
                     .red()
                     .to_string(),
-                span: name.1,
+                span,
                 help: Some(
-                    format!("define it with 'fn {}(...) {{ ... }}'", name.0)
+                    format!("define it with 'fn {}(...) {{ ... }}'", name)
                         .yellow()
                         .to_string(),
                 ),
@@ -687,7 +736,7 @@ impl<Data> VM<Data> {
                         msg: format!("'{}' can only called with 'with'", name)
                             .red()
                             .to_string(),
-                        span: span,
+                        span,
                         help: Some("use 'with' to call this function".yellow().to_string()),
                         color: None,
                     })
@@ -698,7 +747,7 @@ impl<Data> VM<Data> {
                 msg: format!("Outbound '{}' is not defined", name)
                     .red()
                     .to_string(),
-                span: span,
+                span,
                 help: None,
                 color: None,
             })
@@ -1007,29 +1056,18 @@ impl<Data> VM<Data> {
                     color: Some(Color::Yellow),
                 }),
             },
-            Op::Not => match lhs {
-                Value::Bool(b) => Ok(Value::Bool(!b)),
-                _ => Err(RuntimeError {
-                    msg: format!("Cannot perform logical NOT on type {}", lhs.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            },
-            Op::Neg => match lhs {
-                Value::Int(i) => Ok(Value::Int(-i)),
-                Value::Float(f) => Ok(Value::Float(-f)),
-                _ => Err(RuntimeError {
-                    msg: format!("Cannot perform negation on type {}", lhs.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            },
+            _ => Err(RuntimeError {
+                msg: format!(
+                    "Cannot perform operation on types {} and {}",
+                    lhs.ntype().cyan(),
+                    rhs.ntype().cyan()
+                )
+                .yellow()
+                .to_string(),
+                span,
+                help: None,
+                color: Some(Color::Yellow),
+            }),
         }
     }
 }

@@ -48,6 +48,7 @@ impl Op {
             Op::Not => String::from("!"),
             Op::Neg => String::from("-"),
             Op::Join => String::from(".."),
+            Op::Spread => String::from("..."),
         }
     }
 }
@@ -84,6 +85,9 @@ impl Expr {
                     right.to_string(),
                     bracket(")", br_depth)
                 ),
+                Value::Spread(value) => {
+                    format!("{}{:?}", "...".purple(), value)
+                }
                 Value::Special(s, id) => {
                     format!("<special id={} value={}>", s, id)
                 }

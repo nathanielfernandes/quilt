@@ -23,6 +23,9 @@ pub type BuiltinAdder<Data> = fn(&mut BuiltinFnMap<Data>);
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
+    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, RuntimeError>;
+    fn stop(&mut self) -> Result<(), RuntimeError>;
+
     fn int(&mut self) -> Result<i32, RuntimeError>;
     fn u8(&mut self) -> Result<u8, RuntimeError>;
     fn bool(&mut self) -> Result<bool, RuntimeError>;
@@ -34,7 +37,6 @@ pub trait Consumable {
     fn pair(&mut self) -> Result<(Value, Value), RuntimeError>;
     fn rest(&mut self) -> Result<Vec<Value>, RuntimeError>;
     fn any(&mut self) -> Result<Value, RuntimeError>;
-    fn stop(&mut self) -> Result<(), RuntimeError>;
 
     fn special(&mut self, id: &str) -> Result<usize, RuntimeError>;
 }
@@ -52,70 +54,56 @@ pub fn expected(got: &str, expected: &str, span: Span) -> RuntimeError {
 }
 
 impl Consumable for BuiltinArgs {
-    fn special(&mut self, id: &str) -> Result<usize, RuntimeError> {
+    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, RuntimeError> {
         if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Special(sid, value) => {
-                    if id == sid {
-                        Ok(value)
-                    } else {
-                        Err(expected(sid, id, item.1))
-                    }
-                }
-                _ => Err(expected(item.0.ntype(), id, item.1)),
-            }
+            Ok(self.0.remove(0))
         } else {
             Err(RuntimeError {
-                msg: format!("too litte arguments supplied to builtin, expected {}", id)
-                    .red()
-                    .to_string(),
+                msg: format!(
+                    "too litte arguments supplied to builtin, expected {}",
+                    expected
+                )
+                .red()
+                .to_string(),
                 span: self.1.clone(),
                 help: None,
                 color: None,
             })
+        }
+    }
+
+    fn special(&mut self, id: &str) -> Result<usize, RuntimeError> {
+        let (value, span) = self.consume(id)?;
+
+        match value {
+            Value::Special(sid, value) => {
+                if id == sid {
+                    Ok(value)
+                } else {
+                    Err(expected(sid, id, span))
+                }
+            }
+            _ => Err(expected(value.ntype(), id, span)),
         }
     }
 
     /// consumes the next argument as an integer, errors if the next argument is not an integer
     fn int(&mut self) -> Result<i32, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Int(i) => Ok(i),
-                Value::Float(f) => Ok(f as i32),
-                _ => Err(expected(item.0.ntype(), "int", item.1)),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected int"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("int")?;
+        match value {
+            Value::Int(i) => Ok(i),
+            Value::Float(f) => Ok(f as i32),
+            _ => Err(expected(value.ntype(), "int", span)),
         }
     }
 
     /// consumes the next argument as a float or int, errors if the next argument is not a float or int
     fn num(&mut self) -> Result<f32, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Int(i) => Ok(i as f32),
-                Value::Float(f) => Ok(f),
-                _ => Err(expected(item.0.ntype(), "num", item.1)),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected num"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("num")?;
+        match value {
+            Value::Int(i) => Ok(i as f32),
+            Value::Float(f) => Ok(f),
+            _ => Err(expected(value.ntype(), "num", span)),
         }
     }
 
@@ -123,191 +111,66 @@ impl Consumable for BuiltinArgs {
     ///
     /// if the next argument is a float, it will be clamped to the range [0, 255] and rounded
     fn u8(&mut self) -> Result<u8, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Int(i) => Ok(i.min(255).max(0) as u8),
-                Value::Float(f) => Ok((f * 255.0).min(255.0).max(0.0) as u8),
-                _ => Err(RuntimeError {
-                    msg: format!("expected {}, got {}", "u8".cyan(), item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected int"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("u8")?;
+        match value {
+            Value::Int(i) => Ok(i.min(255).max(0) as u8),
+            Value::Float(f) => Ok((f * 255.0).min(255.0).max(0.0) as u8),
+            _ => Err(expected(value.ntype(), "u8", span)),
         }
     }
 
     /// consumes the next argument as a bool value, errors if the next argument is not a bool
     fn bool(&mut self) -> Result<bool, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Bool(b) => Ok(b),
-                _ => Err(RuntimeError {
-                    msg: format!("expected {}, got {}", "bool".cyan(), item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected bool"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("bool")?;
+        match value {
+            Value::Bool(b) => Ok(b),
+            _ => Err(expected(value.ntype(), "bool", span)),
         }
     }
 
     /// consume the next argument as a float, errors if the next argument cannot be a float
     fn float(&mut self) -> Result<f32, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Int(i) => Ok(i as f32),
-                Value::Float(f) => Ok(f),
-                _ => Err(RuntimeError {
-                    msg: format!("expected {}, got {}", "float".cyan(), item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected float"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("float")?;
+        match value {
+            Value::Int(i) => Ok(i as f32),
+            Value::Float(f) => Ok(f),
+            _ => Err(expected(value.ntype(), "float", span)),
         }
     }
 
     /// consumes the next argument as a string, errors if the next argument is not a string
     fn str(&mut self) -> Result<String, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Str(s) => Ok(s),
-                _ => Err(RuntimeError {
-                    msg: format!("expected {}, got {}", "str".cyan(), item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected str"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("str")?;
+        match value {
+            Value::Str(s) => Ok(s),
+            _ => Err(expected(value.ntype(), "str", span)),
         }
     }
 
     /// consumes the next argument as a color, errors if the next argument is not a color
     fn color(&mut self) -> Result<[u8; 4], RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Color(c) => Ok(c),
-                _ => Err(RuntimeError {
-                    msg: format!("expected {}, got {}", "color".cyan(), item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected color"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("color")?;
+        match value {
+            Value::Color(c) => Ok(c),
+            _ => Err(expected(value.ntype(), "color", span)),
         }
     }
 
     /// consumes the next argument as a list, errors if the next argument is not a list
     fn list(&mut self) -> Result<Vec<Value>, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::List(l) => Ok(l),
-                _ => Err(RuntimeError {
-                    msg: format!("expected list, got {}", item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected list"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("list")?;
+        match value {
+            Value::List(l) => Ok(l),
+            Value::Pair(l, r) => Ok(vec![*l, *r]),
+            _ => Err(expected(value.ntype(), "list", span)),
         }
     }
 
     fn pair(&mut self) -> Result<(Value, Value), RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            match item.0 {
-                Value::Pair(l, r) => Ok((*l, *r)),
-                _ => Err(RuntimeError {
-                    msg: format!("expected pair, got {}", item.0.ntype().cyan())
-                        .yellow()
-                        .to_string(),
-                    span: item.1,
-                    help: None,
-                    color: Some(Color::Yellow),
-                }),
-            }
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected pair"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
+        let (value, span) = self.consume("pair")?;
+        match value {
+            Value::Pair(l, r) => Ok((*l, *r)),
+            _ => Err(expected(value.ntype(), "pair", span)),
         }
     }
 
@@ -335,19 +198,8 @@ impl Consumable for BuiltinArgs {
 
     /// consumes the next argument as a any value, errors if there are no arguments left
     fn any(&mut self) -> Result<Value, RuntimeError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
-            Ok(item.0)
-        } else {
-            Err(RuntimeError {
-                msg: "too litte arguments supplied to builtin, expected any"
-                    .red()
-                    .to_string(),
-                span: self.1.clone(),
-                help: None,
-                color: None,
-            })
-        }
+        let (value, _) = self.consume("any")?;
+        Ok(value)
     }
 }
 

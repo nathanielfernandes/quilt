@@ -86,7 +86,7 @@ pub enum Op {
     Add, Sub, Mul, Div, Mod, 
     Pow, Eq,  Neq, Lt,  Gt,  
     Lte, Gte, And, Or, Not, 
-    Neg, Join,
+    Neg, Join, Spread
 }
 
 peg::parser!(
@@ -194,6 +194,7 @@ peg::parser!(
             "!" _ e:@ { Expr::Unary(Op::Not, Box::new(e)) }
             "-" _ e:@ { Expr::Unary(Op::Neg, Box::new(e)) }
             --
+            "..." _ e:@ { Expr::Unary(Op::Spread, Box::new(e)) }
             "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::List(e) }
             "[" _ e:COMMASEP(<literal()>) _ "]" { Expr::Literal(Value::List(e)) }
             "(" _ l:expr() _ "," _ r:expr() _ ")" { Expr::Pair(Box::new(l), Box::new(r)) }
