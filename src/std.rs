@@ -104,14 +104,16 @@ generic_builtins! {
 
     fn @clamp(a: any, min: any, max: any) {
         match (&a, &min, &max) {
-            (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(*a.clamp(min, max)),
-            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.clamp(*min, *max)),
-            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f32).clamp(*min, *max) ),
-            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.clamp(*min as f32, *max as f32)),
-            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f32).clamp(*min as f32, *max) ),
-            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f32).clamp(*min, *max as f32) ),
-            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.clamp(*min as f32, *max) ),
-            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.clamp(*min, *max as f32) ),
+            (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(a.min(max).min(max)),
+            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(max).min(max)),
+            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f32).min(*max).min(*max)),
+            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f32).min(*min).min(*max as f32)),
+            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f32).min(*min).min(*max)),
+            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.min(*min as f32).min(*max as f32)),
+            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*min as f32).min(*max)),
+            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*min).min(*max as f32)),
+            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(*min).min(*max)),
+            
             _ => error!(format!("type {} cannot be compared with given range",  a.ntype().cyan())),
         }
     }
