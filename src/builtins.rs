@@ -211,6 +211,7 @@ macro_rules! generic_builtins {
         $(
             fn @$name:ident($($arg:ident: $type:ident),*) $body:block)*
     } => {
+
            $(
                 pub fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<Value, RuntimeError> {
                         use crate::builtins::Consumable;
@@ -223,7 +224,7 @@ macro_rules! generic_builtins {
                                     span: args.1.clone(),
                                     help: None,
                                     color: None,
-                                })?
+                                })
                             };
                         }
 
@@ -270,7 +271,7 @@ macro_rules! specific_builtins {
                                 span: args.1.clone(),
                                 help: None,
                                 color: None,
-                            })?
+                            })
                         };
                     }
 

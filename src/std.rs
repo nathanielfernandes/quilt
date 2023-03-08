@@ -13,7 +13,7 @@ generic_builtins! {
         } else {
             error!(
                 format!("index {} out of bounds", index).red().to_string()
-            )
+            )?
         }
     }
 
@@ -27,9 +27,9 @@ generic_builtins! {
             Value::Float(f) => Value::Int(f as i32),
             Value::Str(s) => match s.parse::<i32>() {
                 Ok(i) => Value::Int(i),
-                Err(_) => error!(format!("could not parse '{}' as {}", s, "int").red().to_string()),
+                Err(_) => error!(format!("could not parse '{}' as {}", s, "int").red().to_string())?,
             },
-            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "int".cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "int".cyan()).yellow().to_string())?,
         }
     }
 
@@ -39,9 +39,9 @@ generic_builtins! {
             Value::Float(f) => Value::Float(f),
             Value::Str(s) => match s.parse::<f32>() {
                 Ok(f) => Value::Float(f),
-                Err(_) => error!(format!("could not parse '{}' as {}", s, "float").red().to_string()),
+                Err(_) => error!(format!("could not parse '{}' as {}", s, "float").red().to_string())?,
             },
-            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "float".cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "float".cyan()).yellow().to_string())?,
         }
     }
 
@@ -52,9 +52,9 @@ generic_builtins! {
             Value::Float(f) => Value::Bool(f != 0.0),
             Value::Str(s) => match s.parse::<bool>() {
                 Ok(b) => Value::Bool(b),
-                Err(_) => error!(format!("could not parse '{}' as {}", s, "bool").red().to_string()),
+                Err(_) => error!(format!("could not parse '{}' as {}", s, "bool").red().to_string())?,
             },
-            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "bool".cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "bool".cyan()).yellow().to_string())?,
         }
     }
 
@@ -62,7 +62,7 @@ generic_builtins! {
         match arg {
             Value::List(l) => Value::Int(l.len() as i32),
             Value::Str(s) => Value::Int(s.len() as i32),
-            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "len".cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be converted to {}",  arg.ntype().cyan(), "len".cyan()).yellow().to_string())?,
         }
     }
 
@@ -88,7 +88,7 @@ generic_builtins! {
             (Value::Float(a), Value::Float(b)) => Value::Float(a.min(*b)),
             (Value::Int(a), Value::Float(b)) => Value::Float((*a as f32).min(*b) ),
             (Value::Float(a), Value::Int(b)) => Value::Float(a.min(*b as f32)),
-            _ => error!(format!("type {} cannot be compared to {}",  a.ntype().cyan(), b.ntype().cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be compared to {}",  a.ntype().cyan(), b.ntype().cyan()).yellow().to_string())?,
         }
     }
 
@@ -98,23 +98,22 @@ generic_builtins! {
             (Value::Float(a), Value::Float(b)) => Value::Float(a.max(*b)),
             (Value::Int(a), Value::Float(b)) => Value::Float((*a as f32).max(*b) ),
             (Value::Float(a), Value::Int(b)) => Value::Float(a.max(*b as f32)),
-            _ => error!(format!("type {} cannot be compared to {}",  a.ntype().cyan(), b.ntype().cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be compared to {}",  a.ntype().cyan(), b.ntype().cyan()).yellow().to_string())?,
         }
     }
 
-    fn @clamp(a: any, min: any, max: any) {
-        match (&a, &min, &max) {
-            (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(a.min(max).min(max)),
-            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(max).min(max)),
-            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f32).min(*max).min(*max)),
-            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f32).min(*min).min(*max as f32)),
-            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f32).min(*min).min(*max)),
-            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.min(*min as f32).min(*max as f32)),
-            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*min as f32).min(*max)),
-            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*min).min(*max as f32)),
-            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(*min).min(*max)),
-            
-            _ => error!(format!("type {} cannot be compared with given range",  a.ntype().cyan())),
+    fn @clamp(a: any, m: any, mm: any) {
+        match (&a, &m, &mm) {
+            (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(*a.min(max).min(min)),
+            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min)),
+            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f32).min(*max).min(*min)),
+            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.min(*max as f32).min(*min as f32)),
+            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f32).min(*max).min(*min as f32)),
+            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f32).min(*max as f32).min(*min)),
+            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min as f32)),
+            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*max as f32).min(*min)),
+
+            _ => error!(format!("type {} cannot be compared with given range",  a.ntype().cyan()))?,
         }
     }
 
@@ -122,7 +121,7 @@ generic_builtins! {
         match a {
             Value::Int(a) => Value::Int(a.abs()),
             Value::Float(a) => Value::Float(a.abs()),
-            _ => error!(format!("type {} cannot be compared to {}",  a.ntype().cyan(), "abs".cyan()).yellow().to_string()),
+            _ => error!(format!("type {} cannot be compared to {}",  a.ntype().cyan(), "abs".cyan()).yellow().to_string())?,
         }
     }
 
@@ -162,8 +161,8 @@ generic_builtins! {
 generic_builtins! {
     [export=io]
 
-    fn @print(args: rest) {
-        for arg in args {
+    fn @print(to_print: rest) {
+        for arg in to_print {
             print!("{} ", arg);
         }
         println!();
@@ -177,10 +176,10 @@ generic_builtins! {
             if let Ok(_) = std::io::stdin().read_line(&mut input) {
                 Value::Str(input.trim().to_string())
             } else {
-                error!("could not read input".red().to_string())
+                error!("could not read input".red().to_string())?
             }
         } else {
-            error!("could not flush stdout".red().to_string())
+            error!("could not flush stdout".red().to_string())?
         }
     }
 }
