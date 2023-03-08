@@ -275,6 +275,18 @@ macro_rules! specific_builtins {
                         };
                     }
 
+                    #[allow(unused_macros)]
+                    macro_rules! err {
+                        ($msg:expr) => {
+                            RuntimeError {
+                                msg: $msg,
+                                span: args.1.clone(),
+                                help: None,
+                                color: None,
+                            }
+                        };
+                    }
+
                    $(
                        let $arg = args.$type()?;
                    )*
