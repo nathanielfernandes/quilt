@@ -1,4 +1,4 @@
-use crate::shared::{Spanned, Value};
+use crate::shared::{Span, Spanned, Value};
 
 /// A type that represents an expression in Quilt
 /// ### Variants
@@ -90,11 +90,11 @@ pub enum Op {
 }
 
 peg::parser!(
-    pub grammar parser() for str {
+    pub grammar parser(src_id: usize) for str {
         use peg::ParseLiteral;
 
         rule spanned<T>(innter: rule<T>) -> Spanned<T>
-        = start:position!() v:innter() end:position!() { (v, start..end) }
+        = start:position!() v:innter() end:position!() { (v, Span(start, end, src_id)) }
 
         rule TERM() = "\r"? "\n"
         rule COMMENT() = "//" (!TERM() [_])*
@@ -153,7 +153,7 @@ peg::parser!(
 
         rule expr() -> Spanned<Expr>
         = precedence! {
-            start:position!() e:(@) end:position!() { (e, start..end) }
+            start:position!() e:(@) end:position!() { (e, Span(start, end, src_id)) }
             --
             KW("let") _ i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Declaration(i, Box::new(e)) }
             KW("let") _ "[" _ i:COMMASEP(<spanned(<IDENT()>)>) _ "]" _ "=" _ e:@  { Expr::MultiDeclaration(i, Box::new(e)) }
