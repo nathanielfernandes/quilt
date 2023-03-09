@@ -466,7 +466,7 @@ impl<Data> VM<Data> {
                                 self.declare(&varname.0, res);
                             }
 
-                            let mut result = (Value::None, 0..0);
+                            let mut result = (Value::None, Span(0, 0, 0));
                             for expr in body {
                                 result = (self.eval_expr(expr.clone())?, expr.1);
                             }
@@ -482,7 +482,7 @@ impl<Data> VM<Data> {
                                 self.declare(&varname.0, res);
                             }
 
-                            let mut result = (Value::None, 0..0);
+                            let mut result = (Value::None, Span(0, 0, 0));
                             for expr in body {
                                 result = (self.eval_expr(expr.clone())?, expr.1);
                             }
@@ -636,12 +636,12 @@ impl<Data> VM<Data> {
         (func, span): Spanned<BuiltinFnReg<Data>>,
         args: Vec<Spanned<Expr>>,
     ) -> Result<Value, RuntimeError> {
-        let (s, mut e) = (span.start, span.end);
+        let (s, mut e) = (span.0, span.1);
 
         let mut values = Vec::with_capacity(args.len());
 
         for (arg, aspan) in args {
-            e = e.max(aspan.end);
+            e = e.max(aspan.1);
             let value = self.eval_expr((arg, aspan.clone()))?;
 
             if let Value::Spread(vals) = value {
@@ -655,7 +655,10 @@ impl<Data> VM<Data> {
 
         let result = (func)(
             &mut self.data,
-            &mut (values, s.saturating_sub(1)..e.saturating_add(1)),
+            &mut (
+                values,
+                Span(s.saturating_sub(1), e.saturating_add(1), span.2),
+            ),
         )?;
 
         Ok(result)

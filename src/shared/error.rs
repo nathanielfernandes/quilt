@@ -1,6 +1,8 @@
 use std::io::Cursor;
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use ariadne::{Color, Label, Report, ReportKind};
+
+use crate::prelude::SourceCache;
 
 use super::Span;
 
@@ -20,8 +22,8 @@ pub struct RuntimeError {
 
 impl RuntimeError {
     /// Creates a report for the error.
-    pub fn report(self) -> ariadne::Report {
-        let mut report = Report::build(ReportKind::Error, (), self.span.start).with_label(
+    pub fn report(self) -> ariadne::Report<Span> {
+        let mut report = Report::build(ReportKind::Error, 20_usize, self.span.0).with_label(
             Label::new(self.span)
                 .with_message(self.msg)
                 .with_color(self.color.unwrap_or(Color::Red)),
@@ -35,15 +37,15 @@ impl RuntimeError {
     }
 
     /// Prints the error to stdout.
-    pub fn print(self, src: &str) -> Result<(), std::io::Error> {
-        self.report().print(Source::from(src))
+    pub fn print(self, cache: SourceCache) -> Result<(), std::io::Error> {
+        self.report().print(cache)
     }
 
     /// Converts the error to a formatted string.
-    pub fn to_string(self, src: &str) -> Result<String, std::io::Error> {
+    pub fn to_string(self, cache: SourceCache) -> Result<String, std::io::Error> {
         let mut buf = vec![];
         let cursor = Cursor::new(&mut buf);
-        self.report().write(Source::from(src), cursor)?;
+        self.report().write(cache, cursor)?;
 
         if let Ok(s) = String::from_utf8(buf) {
             Ok(s)
