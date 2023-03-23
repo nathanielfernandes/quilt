@@ -22,28 +22,28 @@ pub fn parse(src: &str) -> Result<AST, String> {
 }
 
 use ariadne::{Cache, Source};
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashSet;
 
 pub struct Src {
     pub name: String,
     pub source: Source,
 }
 pub struct SourceCache {
-    sources: FxHashMap<usize, Src>,
+    sources: Vec<Src>,
     resolved: FxHashSet<String>,
 }
 
 impl Cache<usize> for SourceCache {
     fn fetch(&mut self, id: &usize) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
         self.sources
-            .get(id)
+            .get(*id)
             .ok_or_else(|| Box::new("Source not found") as _)
             .map(|src| &src.source)
     }
 
     fn display<'a>(&self, id: &'a usize) -> Option<Box<dyn std::fmt::Display + 'a>> {
         self.sources
-            .get(id)
+            .get(*id)
             .map(|src| Box::new(src.name.clone()) as _)
     }
 }
@@ -51,20 +51,21 @@ impl Cache<usize> for SourceCache {
 impl SourceCache {
     pub fn new() -> Self {
         Self {
-            sources: FxHashMap::default(),
+            sources: Vec::new(),
             resolved: FxHashSet::default(),
         }
     }
 
+    pub fn get(&self, id: usize) -> Option<&Src> {
+        self.sources.get(id)
+    }
+
     pub fn add(&mut self, name: String, src: &str) -> usize {
         let id = self.sources.len();
-        self.sources.insert(
-            id,
-            Src {
-                name,
-                source: Source::from(src),
-            },
-        );
+        self.sources.push(Src {
+            name,
+            source: Source::from(src),
+        });
         id
     }
 
@@ -84,13 +85,14 @@ impl SourceCache {
             Err(e) => {
                 let line = e.location.line;
                 let col = e.location.column;
+                let offset = e.location.offset;
 
                 Err((
                     format!(
-                        "Error at line {}, column {}: expected {}",
+                        "Parse error at line {}, column {}: expected {}",
                         line, col, e.expected
                     ),
-                    Span(0, 0, id),
+                    Span(offset, offset, id),
                 ))
             }
         }
