@@ -141,7 +141,7 @@ peg::parser!(
         / "\\u{" value:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) "}" { char::from_u32(u32::from_str_radix(value, 16).unwrap()).unwrap() }
         / expected!("valid escape sequence")
 
-        rule literal() -> Value
+        pub rule literal() -> Value
         = KW("true") { Value::Bool(true) }
         / KW("false") { Value::Bool(false) }
         / KW("none") { Value::None }
@@ -149,7 +149,7 @@ peg::parser!(
         / f:FLOAT() { Value::Float(f) }
         / i:INT() { Value::Int(i) }
         / s:STRING() { Value::Str(s) }
-
+        / "[" _ e:COMMASEP(<literal()>) _ "]" { Value::List(e) }
 
         rule expr() -> Spanned<Expr>
         = precedence! {
@@ -196,7 +196,6 @@ peg::parser!(
             --
             "..." _ e:@ { Expr::Unary(Op::Spread, Box::new(e)) }
             "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::List(e) }
-            "[" _ e:COMMASEP(<literal()>) _ "]" { Expr::Literal(Value::List(e)) }
             "(" _ l:expr() _ "," _ r:expr() _ ")" { Expr::Pair(Box::new(l), Box::new(r)) }
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(Value::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::BuiltinCall(i, args) }
