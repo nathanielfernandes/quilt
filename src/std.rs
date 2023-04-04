@@ -102,6 +102,42 @@ generic_builtins! {
         }
     }
 
+    fn @round(a: any) {
+        match a {
+            Value::Int(i) => Value::Int(i),
+            Value::Float(f) => Value::Int(f.round() as i32),
+            _ => error!(format!("type {} cannot be converted to {}",  a.ntype().cyan(), "int".cyan()).yellow().to_string())?,
+        }
+    }
+
+    fn @floor(a: any) {
+        match a {
+            Value::Int(i) => Value::Int(i),
+            Value::Float(f) => Value::Int(f.floor() as i32),
+            _ => error!(format!("type {} cannot be converted to {}",  a.ntype().cyan(), "int".cyan()).yellow().to_string())?,
+        }
+    }
+
+    fn @ceil(a: any) {
+        match a {
+            Value::Int(i) => Value::Int(i),
+            Value::Float(f) => Value::Int(f.ceil() as i32),
+            _ => error!(format!("type {} cannot be converted to {}",  a.ntype().cyan(), "int".cyan()).yellow().to_string())?,
+        }
+    }
+
+    // fix number to n digits after the decimal point
+    fn @fix(a: any, digits: int) {
+        match (&a, digits) {
+            (Value::Int(i), 0) => Value::Int(*i),
+            (Value::Float(f), 0) => Value::Int(*f as i32),
+            (Value::Int(i), d) => Value::Float(((*i as f32) * 10.0f32.powi(d)).round() / 10.0f32.powi(d)),
+            (Value::Float(f), d) => Value::Float((*f * 10.0f32.powi(d)).round() / 10.0f32.powi(d)),
+            _ => error!(format!("type {} cannot be converted to {}",  a.ntype().cyan(), "int".cyan()).yellow().to_string())?,
+
+        }
+    }
+
     fn @clamp(a: any, m: any, mm: any) {
         match (&a, &m, &mm) {
             (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(*a.min(max).min(min)),
