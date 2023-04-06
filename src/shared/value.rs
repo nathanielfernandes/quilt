@@ -11,6 +11,7 @@
 /// * `Color`: A color value
 /// * `List`: A list of values
 /// * `Pair`: A pair of values
+/// * `Range`: A range iterator
 /// * `Spread`: A spread of values
 /// * `Special`: A custom value
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +24,7 @@ pub enum Value {
     Color([u8; 4]),
     List(Vec<Value>),
     Pair(Box<Value>, Box<Value>),
+    Range(i32, i32),
     Spread(Vec<Value>),
     Special(&'static str, usize),
 }
@@ -36,9 +38,27 @@ impl std::fmt::Display for Value {
             Value::Float(n) => write!(f, "{}", n),
             Value::Str(s) => write!(f, "{}", s),
             Value::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
-            Value::List(l) => write!(f, "{:?}", l),
+            Value::List(l) => {
+                write!(f, "[")?;
+                for (i, v) in l.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "]")
+            }
             Value::Pair(l, r) => write!(f, "({}, {})", l, r),
-            Value::Spread(l) => write!(f, "...[{:?}]", l),
+            Value::Range(l, r) => write!(f, "{}:{}", l, r),
+            Value::Spread(l) => {
+                for (i, v) in l.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                Ok(())
+            }
             Value::Special(s, id) => write!(f, "<special id={} value={}>", s, id),
         }
     }
@@ -56,8 +76,63 @@ impl Value {
             Value::Color(_) => "color",
             Value::List(_) => "list",
             Value::Pair(_, _) => "pair",
+            Value::Range(_, _) => "range",
             Value::Spread(_) => "spread",
             Value::Special(id, _) => id,
         }
+    }
+}
+
+impl From<char> for Value {
+    fn from(c: char) -> Self {
+        Value::Str(c.to_string())
+    }
+}
+
+impl From<i32> for Value {
+    fn from(i: i32) -> Self {
+        Value::Int(i)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(f: f32) -> Self {
+        Value::Float(f)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+        Value::Bool(b)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::Str(s)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::Str(s.to_string())
+    }
+}
+
+impl From<[u8; 4]> for Value {
+    fn from(c: [u8; 4]) -> Self {
+        Value::Color(c)
+    }
+}
+
+impl From<Vec<Value>> for Value {
+    fn from(l: Vec<Value>) -> Self {
+        Value::List(l)
+    }
+}
+
+impl From<(Value, Value)> for Value {
+    fn from(p: (Value, Value)) -> Self {
+        Value::Pair(Box::new(p.0), Box::new(p.1))
     }
 }

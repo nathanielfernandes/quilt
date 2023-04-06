@@ -91,6 +91,9 @@ impl Expr {
                 Value::Special(s, id) => {
                     format!("<special id={} value={}>", s, id)
                 }
+                Value::Range(start, end) => {
+                    format!("{}{}{}", start, ":", end)
+                }
             },
             Expr::List(list) => format!(
                 "{}{}{}",
@@ -101,35 +104,35 @@ impl Expr {
                     .join(", "),
                 bracket("]", br_depth)
             ),
-            Expr::ForLoop(name, start, end, block) => {
-                let mut s = format!(
-                    "{} {} {} {} {} {}",
-                    "for".purple(),
-                    name.0.red().to_string(),
-                    "in".purple(),
-                    start.0.to_string(depth, br_depth),
-                    "to".purple(),
-                    end.0.to_string(depth, br_depth)
-                );
+            // Expr::RangeLoop(name, start, end, block) => {
+            //     let mut s = format!(
+            //         "{} {} {} {} {} {}",
+            //         "for".purple(),
+            //         name.0.red().to_string(),
+            //         "in".purple(),
+            //         start.0.to_string(depth, br_depth),
+            //         "to".purple(),
+            //         end.0.to_string(depth, br_depth)
+            //     );
 
-                if block.len() == 1 {
-                    s.push_str(&format!(
-                        " {} {} {}",
-                        bracket("{", br_depth),
-                        block[0].0.to_string(depth, br_depth + 1),
-                        bracket("}", br_depth)
-                    ));
-                } else {
-                    s.push_str(&format!(
-                        " {} {} {}",
-                        bracket("{", br_depth),
-                        list_block(&block, depth + 1, br_depth + 1),
-                        bracket("}", br_depth)
-                    ));
-                }
+            //     if block.len() == 1 {
+            //         s.push_str(&format!(
+            //             " {} {} {}",
+            //             bracket("{", br_depth),
+            //             block[0].0.to_string(depth, br_depth + 1),
+            //             bracket("}", br_depth)
+            //         ));
+            //     } else {
+            //         s.push_str(&format!(
+            //             " {} {} {}",
+            //             bracket("{", br_depth),
+            //             list_block(&block, depth + 1, br_depth + 1),
+            //             bracket("}", br_depth)
+            //         ));
+            //     }
 
-                s
-            }
+            //     s
+            // }
             Expr::Import(path, _) => {
                 format!("{} {}", "import".purple(), path.0.green().to_string())
             }

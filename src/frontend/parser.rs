@@ -16,7 +16,11 @@ use crate::shared::{Span, Spanned, Value};
 /// * `Call`: A function call, holds the name of the function as a [`Spanned`] [`String`] and the arguments as a [`Vec`] of [`Spanned`] expressions
 /// * `BuiltinCall`: A builtin function call, holds the name of the builtin function as a [`Spanned`] [`String`] and the arguments as a [`Vec`] of [`Spanned`] expressions
 /// * `ContextWrapped`: A context wrapped function call, holds the name of the function as a [`Spanned`] [`String`], the arguments as a [`Vec`] of [`Spanned`] expressions, the name of the context as an [`Option`] of a [`Spanned`] [`String`], and the context arguments as a [`Vec`] of [`Spanned`] expressions
-/// * `ForLoop`: A for loop, holds the name of the variable as a [`Spanned`] [`String`], the start value as a [`Spanned`] expression, the end value as a [`Spanned`] expression, and the body as a [`Vec`] of [`Spanned`] expressions
+/// * `Pair`: A pair of expressions, holds the left hand side as a [`Spanned`] expression and the right hand side as a [`Spanned`] expression
+/// * `Block`: A block of expressions, holds a [`Vec`] of [`Spanned`] expressions
+/// * `Range`: A range, holds the start and end of the range as [`Spanned`] expressions
+/// * `ForLoop`: A for loop, holds the name of the variable as a [`String`], the iterable as a [`Spanned`] expression, and the body as a [`Vec`] of [`Spanned`] expressions
+
 /// * `Import`: An import, holds the name of the module as a [`String`]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -50,12 +54,11 @@ pub enum Expr {
         Vec<Spanned<Expr>>,
     ),
 
-    ForLoop(
-        Spanned<String>,
-        Box<Spanned<Expr>>,
-        Box<Spanned<Expr>>,
-        Vec<Spanned<Expr>>,
-    ),
+    Block(Vec<Spanned<Expr>>),
+
+    Range(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+    ForLoop(Spanned<String>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
+    MultiForLoop(Vec<Spanned<String>>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
 
     Import(Spanned<String>, Option<Vec<Spanned<Expr>>>),
 }
@@ -147,6 +150,7 @@ peg::parser!(
         / KW("none") { Value::None }
         / h:HEX() { Value::Color(h) }
         / f:FLOAT() { Value::Float(f) }
+        // / s:INT() _ ":" _ e:INT() { Value::Range(s, e) }
         / i:INT() { Value::Int(i) }
         / s:STRING() { Value::Str(s) }
         / "[" _ e:COMMASEP(<literal()>) _ "]" { Value::List(e) }
@@ -164,11 +168,16 @@ peg::parser!(
             --
             KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
             --
-            KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::ForLoop(i, Box::new(start), Box::new(end), body) }
+            // KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::RangeLoop(i, Box::new(start), Box::new(end), body) }
+            KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ iterable:expr() _ body:block() { Expr::ForLoop(i, Box::new(iterable), body) }
+            KW("for") _ "[" _ i:COMMASEP(<spanned(<IDENT()>)>) _ "]" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(i, Box::new(iterable), body) }
+            KW("for") _  "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(vec![left, right], Box::new(iterable), body) }
             --
             KW("with") _ "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" n:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block() { Expr::ContextWrapped(i, args, n, body) }
             --
             KW("import") _ s:spanned(<STRING()>) { Expr::Import(s, None) }
+            --
+            x:(@) _ ":" _ y:@ { Expr::Range(Box::new(x), Box::new(y)) }
             --
             x:(@) _ "&&" _ y:@ { Expr::Binary(Op::And, Box::new(x), Box::new(y)) }
             x:(@) _ "||" _ y:@ { Expr::Binary(Op::Or, Box::new(x), Box::new(y)) }
@@ -204,6 +213,7 @@ peg::parser!(
             "$" i:IDENT() { Expr::Yoink(i) }
             i:IDENT() { Expr::Ident(i) }
             "(" _ e:expr() _ ")" { e.0 }
+            b:block() { Expr::Block(b) }
         }
 
         rule block() -> Vec<Spanned<Expr>>

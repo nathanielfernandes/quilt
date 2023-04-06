@@ -323,6 +323,27 @@ impl<Data> VM<Data> {
             Expr::Literal(l) => Ok(l),
             Expr::Ident(name) => self.get((name, span)),
             Expr::Yoink(name) => self.remove((name, span)),
+            Expr::Block(block) => {
+                let mut result = Value::None;
+                for expr in block {
+                    result = self.eval_expr(expr)?;
+                }
+                Ok(result)
+            }
+            Expr::Range(start, end) => {
+                let start = self.eval_expr(*start)?;
+                let end = self.eval_expr(*end)?;
+
+                match (start, end) {
+                    (Value::Int(start), Value::Int(end)) => Ok(Value::Range(start, end)),
+                    _ => Err(RuntimeError {
+                        msg: "Range must be between two integers".red().to_string(),
+                        span,
+                        help: None,
+                        color: None,
+                    }),
+                }
+            }
             Expr::List(items) => Ok(Value::List(
                 items
                     .into_iter()
@@ -339,58 +360,10 @@ impl<Data> VM<Data> {
                 Ok(Value::None)
             }
             Expr::MultiDeclaration(names, value) => {
+                let span = value.1;
                 let value = self.eval_expr(*value)?;
-                match value {
-                    Value::List(items) => {
-                        if items.len() != names.len() {
-                            Err(RuntimeError {
-                                msg: format!(
-                                    "Expected {} items in list, got {}",
-                                    names.len(),
-                                    items.len()
-                                )
-                                .red()
-                                .to_string(),
-                                span,
-                                help: None,
-                                color: None,
-                            })?;
-                        }
-
-                        for ((name, _), value) in names.into_iter().zip(items) {
-                            self.declare(&name, value);
-                        }
-                        Ok(Value::None)
-                    }
-                    Value::Pair(left, right) => {
-                        if names.len() != 2 {
-                            Err(RuntimeError {
-                                msg: format!("Tried to unpack pair into {} variables", names.len())
-                                    .red()
-                                    .to_string(),
-                                span,
-                                help: None,
-                                color: None,
-                            })?;
-                        }
-                        self.declare(&names[0].0, *left);
-                        self.declare(&names[1].0, *right);
-                        Ok(Value::None)
-                    }
-
-                    _ => Err(RuntimeError {
-                        msg: format!(
-                            "Cannot unpack {} into {} variables",
-                            value.ntype().cyan(),
-                            names.len()
-                        )
-                        .red()
-                        .to_string(),
-                        span,
-                        help: None,
-                        color: Some(Color::Red),
-                    })?,
-                }
+                self.multi_declare(&names, (value, span))?;
+                Ok(Value::None)
             }
             Expr::Assignment(name, value) => {
                 let value = self.eval_expr(*value)?;
@@ -550,22 +523,55 @@ impl<Data> VM<Data> {
 
                 Ok(result)
             }
-            Expr::ForLoop(name, start, end, body) => {
-                let start = self.eval_expr(*start)?;
-                let end = self.eval_expr(*end)?;
+            // Expr::RangeLoop(name, start, end, body) => {
+            //     let start = self.eval_expr(*start)?;
+            //     let end = self.eval_expr(*end)?;
 
-                match (&start, &end) {
-                    (Value::Int(start), Value::Int(end)) => {
-                        self.eval_for_loop(name, *start, *end, body)
-                    }
+            //     match (&start, &end) {
+            //         (Value::Int(start), Value::Int(end)) => {
+            //             self.eval_for_loop(name, *start, *end, body)
+            //         }
+            //         _ => Err(RuntimeError {
+            //             msg: format!(
+            //                 "Expected integers for loop bounds, got {} and {}",
+            //                 start.ntype().cyan(),
+            //                 end.ntype().cyan()
+            //             )
+            //             .yellow()
+            //             .to_string(),
+            //             span,
+            //             help: None,
+            //             color: Some(Color::Yellow),
+            //         }),
+            //     }
+            // }
+            Expr::ForLoop(name, iterable, body) => {
+                let iterable = self.eval_expr(*iterable)?;
+
+                match iterable {
+                    Value::List(items) => self.eval_for_loop(name, items, body),
+                    Value::Str(s) => self.eval_for_loop(name, s.chars(), body),
+                    Value::Range(start, end) => self.eval_for_loop(name, start..end, body),
                     _ => Err(RuntimeError {
-                        msg: format!(
-                            "Expected integers for loop bounds, got {} and {}",
-                            start.ntype().cyan(),
-                            end.ntype().cyan()
-                        )
-                        .yellow()
-                        .to_string(),
+                        msg: format!("Cannot iterate over type {}", iterable.ntype().cyan())
+                            .yellow()
+                            .to_string(),
+                        span,
+                        help: None,
+                        color: Some(Color::Yellow),
+                    }),
+                }
+            }
+
+            Expr::MultiForLoop(names, iterable, body) => {
+                let iterable = self.eval_expr(*iterable)?;
+
+                match iterable {
+                    Value::List(items) => self.eval_multi_for_loop(names, (items, span), body),
+                    _ => Err(RuntimeError {
+                        msg: format!("Cannot iterate over type {}", iterable.ntype().cyan())
+                            .yellow()
+                            .to_string(),
                         span,
                         help: None,
                         color: Some(Color::Yellow),
@@ -578,16 +584,15 @@ impl<Data> VM<Data> {
         result
     }
 
-    pub fn eval_for_loop(
+    pub fn eval_for_loop<T: Into<Value>, I: IntoIterator<Item = T>>(
         &mut self,
         (name, span): Spanned<String>,
-        start: i32,
-        end: i32,
+        iterable: I,
         body: Vec<Spanned<Expr>>,
     ) -> Result<Value, RuntimeError> {
         let mut result = Value::None;
 
-        for i in start.max(self.options.loop_min)..end.min(self.options.loop_max) {
+        for i in iterable.into_iter() {
             if self.loop_count >= self.options.max_loops {
                 return Err(RuntimeError {
                     msg: format!(
@@ -604,7 +609,7 @@ impl<Data> VM<Data> {
 
             self.loop_count += 1;
 
-            self.declare(&name, Value::Int(i));
+            self.declare(&name, i.into());
             for expr in &body {
                 result = self.eval_expr(expr.clone())?;
             }
@@ -613,6 +618,99 @@ impl<Data> VM<Data> {
         }
 
         Ok(result)
+    }
+
+    pub fn eval_multi_for_loop<I: IntoIterator<Item = Value>>(
+        &mut self,
+        names: Vec<Spanned<String>>,
+        (iterable, span): Spanned<I>,
+        body: Vec<Spanned<Expr>>,
+    ) -> Result<Value, RuntimeError> {
+        let mut result = Value::None;
+
+        for i in iterable.into_iter() {
+            if self.loop_count >= self.options.max_loops {
+                return Err(RuntimeError {
+                    msg: format!(
+                        "Loop limit of {} exceeded",
+                        self.options.max_loops.to_string().cyan()
+                    )
+                    .red()
+                    .to_string(),
+                    span,
+                    help: None,
+                    color: Some(Color::Red),
+                });
+            }
+
+            self.loop_count += 1;
+
+            self.multi_declare(&names, (i, span))?;
+            for expr in &body {
+                result = self.eval_expr(expr.clone())?;
+            }
+
+            self.loop_count -= 1;
+        }
+
+        Ok(result)
+    }
+
+    pub fn multi_declare(
+        &mut self,
+        names: &Vec<Spanned<String>>,
+        (value, span): Spanned<Value>,
+    ) -> Result<(), RuntimeError> {
+        match value {
+            Value::List(items) => {
+                if items.len() != names.len() {
+                    return Err(RuntimeError {
+                        msg: format!(
+                            "Expected {} items in list, got {}",
+                            names.len().to_string().cyan(),
+                            items.len().to_string().cyan()
+                        )
+                        .yellow()
+                        .to_string(),
+                        span,
+                        help: None,
+                        color: Some(Color::Yellow),
+                    });
+                }
+
+                for ((name, _), value) in names.into_iter().zip(items) {
+                    self.declare(&name, value);
+                }
+                Ok(())
+            }
+            Value::Pair(left, right) => {
+                if names.len() != 2 {
+                    Err(RuntimeError {
+                        msg: format!("Tried to unpack pair into {} variables", names.len())
+                            .red()
+                            .to_string(),
+                        span,
+                        help: None,
+                        color: None,
+                    })?;
+                }
+                self.declare(&names[0].0, *left);
+                self.declare(&names[1].0, *right);
+                Ok(())
+            }
+            _ => Err(RuntimeError {
+                msg: format!(
+                    "Cannot unpack {} into {} variables",
+                    value.ntype().cyan(),
+                    names.len()
+                )
+                .red()
+                .to_string(),
+                span,
+                help: None,
+                color: Some(Color::Red),
+            })?,
+        }
     }
 
     pub fn eval_args(&mut self, args: Vec<Spanned<Expr>>) -> Result<Vec<Value>, RuntimeError> {
