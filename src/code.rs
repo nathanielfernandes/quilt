@@ -56,6 +56,18 @@ impl SourceCache {
         }
     }
 
+    pub fn get_lineno(&self, span: &Span) -> Option<usize> {
+        self.sources
+            .get(span.2)
+            .map(|src| {
+                if src.source.len() == 0 {
+                    return None;
+                }
+                src.source.get_offset_line(span.0).map(|(_, l, _)| l + 1)
+            })
+            .flatten()
+    }
+
     pub fn get(&self, id: usize) -> Option<&Src> {
         self.sources.get(id)
     }
@@ -105,7 +117,7 @@ impl SourceCache {
     ) -> Result<(), Spanned<String>> {
         for (expr, _) in ast.iter_mut() {
             match expr {
-                Expr::Import((path, span), block) => {
+                Expr::Import((path, span)) => {
                     if self.resolved.contains(path) {
                         Err((
                             format!("Duplicate or Circular import: {}", path),
@@ -119,7 +131,7 @@ impl SourceCache {
 
                     self.resolve_imports(&mut imported_ast, resolver)?;
 
-                    *block = Some(imported_ast);
+                    *expr = Expr::Block(imported_ast);
                 }
                 _ => {}
             }

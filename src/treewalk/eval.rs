@@ -65,15 +65,6 @@ pub(crate) struct Function {
 /// * `functions` - the functions defined in the VM
 /// * `data` - the data that builtins in the VM can access
 /// * `builtins` - the builtins that the VM can access
-///
-/// ### Examples
-/// ```no_run
-/// use quilt::prelude::*;
-///
-/// let mut vm = VM::with_stdio(());
-/// let ast = parse("@print('Hello, world!')").unwrap();
-/// vm.eval(ast).map_err(|e| e.print()).unwrap();
-/// ```
 pub struct VM<Data> {
     pub frames: Vec<FxHashMap<String, Value>>,
     pub(crate) functions: FxHashMap<String, Rc<Function>>,
@@ -302,24 +293,14 @@ impl<Data> VM<Data> {
         self.depth += 1;
 
         let result = match expr {
-            Expr::Import((namespace, span), block) => {
-                if let Some(block) = block {
-                    let mut result = Value::None;
-                    for expr in block {
-                        result = self.eval_expr(expr)?;
-                    }
-                    Ok(result)
-                } else {
-                    Err(RuntimeError {
-                        msg: format!("Unresolved import: '{}'", namespace)
-                            .red()
-                            .to_string(),
-                        span,
-                        help: Some("Only top level imports are supported".yellow().to_string()),
-                        color: None,
-                    })
-                }
-            }
+            Expr::Import((namespace, span)) => Err(RuntimeError {
+                msg: format!("Unresolved import: '{}'", namespace)
+                    .red()
+                    .to_string(),
+                span,
+                help: Some("Only top level imports are supported".yellow().to_string()),
+                color: None,
+            }),
             Expr::Literal(l) => Ok(l),
             Expr::Ident(name) => self.get((name, span)),
             Expr::Yoink(name) => self.remove((name, span)),
@@ -335,7 +316,10 @@ impl<Data> VM<Data> {
                 let end = self.eval_expr(*end)?;
 
                 match (start, end) {
-                    (Value::Int(start), Value::Int(end)) => Ok(Value::Range(start, end)),
+                    (Value::Int(start), Value::Int(end)) => Ok(Value::Range(
+                        start.min(32_767).max(-32_768),
+                        end.min(32_767).max(-32_768),
+                    )),
                     _ => Err(RuntimeError {
                         msg: "Range must be between two integers".red().to_string(),
                         span,
@@ -374,7 +358,7 @@ impl<Data> VM<Data> {
             Expr::Binary(op, lhs, rhs) => {
                 let lhs = self.eval_expr(*lhs)?;
                 let rhs = self.eval_expr(*rhs)?;
-                self.eval_binary(op, lhs, rhs, span)
+                Self::eval_binary(op, lhs, rhs, span)
             }
             Expr::Unary(op, lhs) => {
                 let lhs = self.eval_expr(*lhs)?;
@@ -856,13 +840,7 @@ impl<Data> VM<Data> {
     }
 
     /// Evaluate a binary operation
-    pub fn eval_binary(
-        &mut self,
-        op: Op,
-        lhs: Value,
-        rhs: Value,
-        span: Span,
-    ) -> Result<Value, RuntimeError> {
+    pub fn eval_binary(op: Op, lhs: Value, rhs: Value, span: Span) -> Result<Value, RuntimeError> {
         match &op {
             Op::Add => match (&lhs, &rhs) {
                 (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Str(format!("{}{}", lhs, rhs))),
@@ -955,12 +933,6 @@ impl<Data> VM<Data> {
                     (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 / rhs)),
                     (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs / *rhs as f32)),
                     (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs / rhs)),
-                    (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
-                        lhs[0].saturating_div(rhs[0]),
-                        lhs[1].saturating_div(rhs[1]),
-                        lhs[2].saturating_div(rhs[2]),
-                        lhs[3].saturating_div(rhs[3]),
-                    ])),
                     _ => Err(RuntimeError {
                         msg: format!(
                             "Cannot divide types {} and {}",
@@ -1029,7 +1001,6 @@ impl<Data> VM<Data> {
                 (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) < *rhs)),
                 (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs < *rhs as f32)),
                 (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs < *rhs)),
-                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs < rhs)),
                 _ => Err(RuntimeError {
                     msg: format!(
                         "Cannot compare types {} and {}",
@@ -1048,7 +1019,6 @@ impl<Data> VM<Data> {
                 (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) > *rhs)),
                 (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs > *rhs as f32)),
                 (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs > *rhs)),
-                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs > rhs)),
                 _ => Err(RuntimeError {
                     msg: format!(
                         "Cannot compare types {} and {}",
@@ -1067,7 +1037,6 @@ impl<Data> VM<Data> {
                 (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) <= *rhs)),
                 (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs <= *rhs as f32)),
                 (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs <= *rhs)),
-                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs <= rhs)),
                 _ => Err(RuntimeError {
                     msg: format!(
                         "Cannot compare types {} and {}",
@@ -1086,7 +1055,6 @@ impl<Data> VM<Data> {
                 (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) >= *rhs)),
                 (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs >= *rhs as f32)),
                 (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs >= *rhs)),
-                (Value::Str(lhs), Value::Str(rhs)) => Ok(Value::Bool(lhs >= rhs)),
                 _ => Err(RuntimeError {
                     msg: format!(
                         "Cannot compare types {} and {}",

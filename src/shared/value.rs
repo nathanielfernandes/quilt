@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 /// A value in the quilt language.
 ///
 /// This is the type that is used to represent all values in the quilt language.
@@ -16,17 +18,58 @@
 /// * `Special`: A custom value
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+    // primitives
     None,
     Bool(bool),
     Int(i32),
     Float(f32),
-    Str(String),
-    Color([u8; 4]),
-    List(Vec<Value>),
-    Pair(Box<Value>, Box<Value>),
     Range(i32, i32),
+    Color([u8; 4]),
+
+    // collections
+    List(Vec<Value>),
+    Str(String),
+    Pair(Box<Value>, Box<Value>),
     Spread(Vec<Value>),
     Special(&'static str, usize),
+}
+
+impl Value {
+    pub fn display(&self) -> String {
+        match self {
+            Value::None => "none".cyan().to_string(),
+            Value::Bool(b) => b.to_string().yellow().to_string(),
+            Value::Int(i) => i.to_string().yellow().to_string(),
+            Value::Float(n) => n.to_string().yellow().to_string(),
+            Value::Str(s) => format!("'{}'", s).green().to_string(),
+            Value::Color([r, g, b, a]) => format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
+            Value::List(l) => {
+                let mut s = "[".to_string();
+                for (i, v) in l.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    s.push_str(&v.display());
+                }
+                s.push(']');
+                s
+            }
+            Value::Pair(a, b) => format!("({}, {})", a.display(), b.display()),
+            Value::Range(a, b) => format!("{}:{}", a, b),
+            Value::Spread(l) => {
+                let mut s = "(".to_string();
+                for (i, v) in l.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    s.push_str(&v.display());
+                }
+                s.push(')');
+                s
+            }
+            Value::Special(name, _) => name.to_string().cyan().to_string(),
+        }
+    }
 }
 
 impl std::fmt::Display for Value {
@@ -92,6 +135,12 @@ impl From<char> for Value {
 impl From<i32> for Value {
     fn from(i: i32) -> Self {
         Value::Int(i)
+    }
+}
+
+impl From<i16> for Value {
+    fn from(i: i16) -> Self {
+        Value::Int(i as i32)
     }
 }
 

@@ -1,2 +1,2 @@
-pub mod bytecode;
+pub mod utils;
 pub mod vm;

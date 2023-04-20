@@ -2,9 +2,108 @@ use std::io::Cursor;
 
 use ariadne::{Color, Label, Report, ReportKind};
 
-use crate::prelude::SourceCache;
+use super::{Span, Spanned};
+use crate::prelude::{Op, SourceCache};
+use thiserror::Error;
 
-use super::Span;
+pub type ErrorS = Spanned<Error>;
+pub type ValueType = &'static str;
+
+pub trait ErrorExt {
+    fn report(&self) -> Report<Span>;
+    fn print(&self, sources: SourceCache) -> std::io::Result<()>;
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum Error {
+    #[error("NameError: {0}")]
+    NameError(NameError),
+
+    #[error("OverflowError: {0}")]
+    OverflowError(OverflowError),
+
+    #[error("TypeError: {0}")]
+    TypeError(TypeError),
+}
+
+impl ErrorExt for ErrorS {
+    fn report(&self) -> Report<Span> {
+        let (error, span) = &self;
+        let msg = error.to_string();
+
+        let report = Report::build(ReportKind::Error, span.2, span.0)
+            .with_label(Label::new(*span).with_message(msg).with_color(Color::Red));
+
+        report.finish()
+    }
+
+    fn print(&self, sources: SourceCache) -> std::io::Result<()> {
+        self.report().print(sources)
+    }
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum TypeError {
+    #[error("expected `{0}` got `{1}`")]
+    Expected(ValueType, ValueType),
+
+    #[error("function '{name}' expected `{expected}` arguments got `{got}`")]
+    MismatchedArity { name: String, expected: u8, got: u8 },
+
+    #[error("cannot use `{0}` as a function")]
+    NotCallable(ValueType),
+
+    #[error("unsupported binary operation `{op}` on `{lhs}` and `{rhs}`")]
+    UnsupportedBinaryOperation {
+        op: Op,
+        lhs: ValueType,
+        rhs: ValueType,
+    },
+
+    #[error("unsupported unary operation `{op}` on `{rhs}`")]
+    UnsupportedUnaryOperation { op: Op, rhs: ValueType },
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum NameError {
+    #[error("name {0:?} is not defined")]
+    Undefined(String),
+    #[error("name {0:?} is already defined")]
+    AlreadyDefined(String),
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum OverflowError {
+    #[error("cannot define more than 256 parameters in a function")]
+    TooManyParams,
+
+    #[error("cannot use more than 256 arguments in a function call")]
+    TooManyArgs,
+
+    #[error("stack overflow")]
+    StackOverflow,
+
+    #[error("stack underflow")]
+    StackUnderflow,
+
+    #[error("instruction overflow")]
+    InstructionOverflow,
+
+    #[error("jump too large")]
+    JumpTooLarge,
+}
+
+macro_rules! impl_from_error {
+    ($($error:tt),+) => {$(
+        impl From<$error> for Error {
+            fn from(e: $error) -> Self {
+                Error::$error(e)
+            }
+        }
+    )+};
+}
+
+impl_from_error!(NameError, OverflowError, TypeError);
 
 /// A runtime error.
 /// ### Fields
@@ -21,9 +120,24 @@ pub struct RuntimeError {
 }
 
 impl RuntimeError {
+    pub fn help(mut self, help: String) -> Self {
+        self.help = Some(help);
+        self
+    }
+
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+
+    pub fn span(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
+
     /// Creates a report for the error.
     pub fn report(self) -> ariadne::Report<Span> {
-        let mut report = Report::build(ReportKind::Error, 20_usize, self.span.0).with_label(
+        let mut report = Report::build(ReportKind::Error, self.span.2, self.span.0).with_label(
             Label::new(self.span)
                 .with_message(self.msg)
                 .with_color(self.color.unwrap_or(Color::Red)),

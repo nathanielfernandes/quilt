@@ -60,7 +60,7 @@ pub enum Expr {
     ForLoop(Spanned<String>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
     MultiForLoop(Vec<Spanned<String>>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
 
-    Import(Spanned<String>, Option<Vec<Spanned<Expr>>>),
+    Import(Spanned<String>),
 }
 
 /// A type that represents an operator in Quilt
@@ -84,12 +84,37 @@ pub enum Expr {
 /// * `Neg`: Negation
 /// * `Join`: Join
 #[rustfmt::skip]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
     Add, Sub, Mul, Div, Mod, 
     Pow, Eq,  Neq, Lt,  Gt,  
     Lte, Gte, And, Or, Not, 
     Neg, Join, Spread
+}
+
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::Add => write!(f, "+"),
+            Op::Sub => write!(f, "-"),
+            Op::Mul => write!(f, "*"),
+            Op::Div => write!(f, "/"),
+            Op::Mod => write!(f, "%"),
+            Op::Pow => write!(f, "**"),
+            Op::Eq => write!(f, "=="),
+            Op::Neq => write!(f, "!="),
+            Op::Lt => write!(f, "<"),
+            Op::Gt => write!(f, ">"),
+            Op::Lte => write!(f, "<="),
+            Op::Gte => write!(f, ">="),
+            Op::And => write!(f, "&&"),
+            Op::Or => write!(f, "||"),
+            Op::Not => write!(f, "!"),
+            Op::Neg => write!(f, "-"),
+            Op::Join => write!(f, ".."),
+            Op::Spread => write!(f, "..."),
+        }
+    }
 }
 
 peg::parser!(
@@ -164,7 +189,11 @@ peg::parser!(
             KW("let") _ "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ "=" _ e:@  { Expr::MultiDeclaration(vec![left, right], Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Assignment(i, Box::new(e)) }
             --
-            KW("fn") _ i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block() { Expr::Function(i, args, body) }
+            KW("fn") _ i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ start:position!() body:block() end:position!(){
+                let mut body = body;
+                fix_return((&mut body, Span(start, end, src_id)));
+                Expr::Function(i, args, body)
+            }
             --
             KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
             --
@@ -175,7 +204,7 @@ peg::parser!(
             --
             KW("with") _ "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" n:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block() { Expr::ContextWrapped(i, args, n, body) }
             --
-            KW("import") _ s:spanned(<STRING()>) { Expr::Import(s, None) }
+            KW("import") _ s:spanned(<STRING()>) { Expr::Import(s) }
             --
             x:(@) _ ":" _ y:@ { Expr::Range(Box::new(x), Box::new(y)) }
             --
@@ -203,13 +232,13 @@ peg::parser!(
             "!" _ e:@ { Expr::Unary(Op::Not, Box::new(e)) }
             "-" _ e:@ { Expr::Unary(Op::Neg, Box::new(e)) }
             --
+            l:literal() { Expr::Literal(l) }
             "..." _ e:@ { Expr::Unary(Op::Spread, Box::new(e)) }
             "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::List(e) }
             "(" _ l:expr() _ "," _ r:expr() _ ")" { Expr::Pair(Box::new(l), Box::new(r)) }
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(Value::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::BuiltinCall(i, args) }
             i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::Call(i, args) }
-            l:literal() { Expr::Literal(l) }
             "$" i:IDENT() { Expr::Yoink(i) }
             i:IDENT() { Expr::Ident(i) }
             "(" _ e:expr() _ ")" { e.0 }
@@ -223,7 +252,13 @@ peg::parser!(
         = _ e:expr() _ { e }
 
         pub rule parse_code() -> Vec<Spanned<Expr>>
-        = _ code:(x:parse() ** (";"/"\n"/_))? _ {code.unwrap_or_default()}
+        = _  start:position!() code:(x:parse() ** (";"/"\n"/_))? end:position!() _ {
+            let mut code = code.unwrap_or_default();
+
+            fix_return((&mut code, Span(start, end, src_id)));
+
+            code
+        }
     }
 );
 
@@ -250,4 +285,36 @@ fn hex_to_rgba(hex: &str) -> Option<[u8; 4]> {
     };
 
     Some([r, g, b, a])
+}
+
+pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
+    if body.is_empty() {
+        body.push((Expr::Literal(Value::None), span));
+    } else {
+        let last = body.last_mut().expect("body is not empty");
+        let span = last.1.clone();
+        let last = &mut last.0;
+
+        match last {
+            Expr::Block(b) => fix_return((b, span)),
+            Expr::Conditional(_, then, otherwise) => {
+                fix_return((then, span));
+                if let Some(otherwise) = otherwise {
+                    fix_return((otherwise, span));
+                }
+            }
+            Expr::ForLoop(_, _, body) => fix_return((body, span)),
+            Expr::MultiForLoop(_, _, body) => fix_return((body, span)),
+
+            Expr::Declaration(_, _)
+            | Expr::Assignment(_, _)
+            | Expr::MultiDeclaration(_, _)
+            | Expr::Function(_, _, _)
+            | Expr::Import(_) => {
+                body.push((Expr::Literal(Value::None), span));
+            }
+
+            _ => {}
+        }
+    }
 }
