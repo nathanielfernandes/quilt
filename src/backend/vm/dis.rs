@@ -5,25 +5,29 @@ use crate::prelude::SourceCache;
 use super::{
     bytecode::{ByteCode, OpCode},
     chunk::Chunk,
+    compiler::VmEntry,
     value::{Function, Value},
 };
 
 pub struct Disassembler<'a> {
     pub src: &'a SourceCache,
 
+    pub entry: &'a VmEntry,
+
     output: String,
 }
 
 impl<'a> Disassembler<'a> {
-    pub fn new(src: &'a SourceCache) -> Self {
+    pub fn new(entry: &'a VmEntry, src: &'a SourceCache) -> Self {
         Self {
             src,
+            entry,
             output: String::new(),
         }
     }
 
-    pub fn disassemble(mut self, function: &Function) -> String {
-        self.disassemble_function(function);
+    pub fn disassemble(mut self) -> String {
+        self.disassemble_function(&self.entry.function);
         self.output
     }
 
@@ -143,10 +147,21 @@ impl<'a> Disassembler<'a> {
                 let local_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 
+                let symbol = match op {
+                    OpCode::DefineGlobal | OpCode::LoadGlobal | OpCode::SetGlobal => self
+                        .entry
+                        .global_symbols
+                        .get(local_offset as usize)
+                        .cloned()
+                        .unwrap_or("unknown???".to_string()),
+
+                    _ => chunk.force_symbol(local_offset).to_string(),
+                };
+
                 self.output.push_str(&format!(
                     "\t{} ({})\n",
                     local_offset.to_string().green(),
-                    chunk.force_symbol(local_offset).cyan(),
+                    symbol.cyan(),
                 ));
             }
 

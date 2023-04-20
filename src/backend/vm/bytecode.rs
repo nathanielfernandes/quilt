@@ -30,6 +30,7 @@ gen_bytecode!(
     CreateFunction,
     CreateClosure,
     CallFunction, // u8
+    CallBuiltIn,  // u8
     JumpIfFalse,  // u16
     Jump,         // u16
     UnaryNegate,

@@ -7,12 +7,17 @@ use crate::prelude::{Error, ErrorS, NameError, OverflowError, TypeError};
 
 use super::{
     bytecode::*,
-    value::{Closure, Function, Upvalue, Value},
+    compiler::VmEntry,
+    value::{Closure, Upvalue, Value},
 };
 
-pub struct VM<const STACK_SIZE: usize, const CALL_STACK_SIZE: usize> {
-    pub globals: FxHashMap<String, Value>,
-    pub open_upvalues: Vec<Upvalue>,
+pub struct VM<Data, const STACK_SIZE: usize, const CALL_STACK_SIZE: usize> {
+    pub data: Data, // any data that the VM builtins needs to access
+
+    globals: FxHashMap<u16, Value>,
+    global_symbols: Vec<String>,
+
+    open_upvalues: Vec<Upvalue>,
 
     frames: ArrayVec<CallFrame, CALL_STACK_SIZE>,
     frame: CallFrame,
@@ -21,17 +26,21 @@ pub struct VM<const STACK_SIZE: usize, const CALL_STACK_SIZE: usize> {
     sp: usize,
 }
 
-impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
-    pub fn new(function: Function) -> Self {
+impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
+    pub fn new(data: Data, entry: VmEntry) -> Self {
         Self {
+            data,
+
             globals: FxHashMap::default(),
+            global_symbols: entry.global_symbols,
+
             open_upvalues: Vec::with_capacity(256),
 
             frames: ArrayVec::new(),
             frame: {
                 CallFrame {
                     closure: Rc::new(Closure {
-                        function: Rc::new(function),
+                        function: Rc::new(entry.function),
                         upvalues: Vec::new(),
                     }),
                     ip: 0,
@@ -62,7 +71,7 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                 }
 
                 Return => {
-                    let result = self.pop()?;
+                    let result = self.pop()?.clone();
                     self.close_upvalues(self.frame.st);
 
                     // clean up stack
@@ -70,8 +79,6 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                     //     self.stack[i] = Value::None;
                     // }
                     self.sp = self.frame.st;
-
-                    // self.stack.truncate(self.frame.st);
 
                     match self.frames.pop() {
                         Some(frame) => {
@@ -107,37 +114,58 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                 }
 
                 LoadGlobal => {
-                    let name = self.read_symbol().to_string();
+                    // let name = self.read_symbol().to_string();
+                    let name = self.read_u16();
 
                     match self.globals.get(&name) {
                         Some(value) => self.push(value.clone())?,
-                        None => return Err(self.error(NameError::Undefined(name).into())),
+                        None => {
+                            let name = self
+                                .global_symbols
+                                .get(name as usize)
+                                .cloned()
+                                .unwrap_or(String::from("unkown???"));
+
+                            return Err(self.error_1(NameError::Undefined(name).into()));
+                        }
                     }
                 }
 
                 DefineGlobal => {
-                    let name = self.read_symbol().to_string();
-                    let value = self.pop()?;
+                    // let name = self.read_symbol().to_string();
+                    let name = self.read_u16();
+
+                    let value = self.pop()?.clone();
                     self.globals.insert(name, value);
                 }
 
                 SetGlobal => {
-                    let name = self.read_symbol().to_string();
+                    // let name = self.read_symbol().to_string();
+                    let name = self.read_u16();
                     let value = self.peek(0)?.clone();
 
                     match self.globals.entry(name) {
                         Entry::Occupied(mut entry) => {
                             entry.insert(value);
                         }
-                        Entry::Vacant(entry) => Err({
-                            let span = self
-                                .frame
-                                .closure
-                                .function
-                                .chunk
-                                .get_span(self.frame.ip - 1);
-                            (NameError::Undefined(entry.key().to_string()).into(), span)
-                        })?,
+                        Entry::Vacant(entry) => {
+                            return Err({
+                                let span = self
+                                    .frame
+                                    .closure
+                                    .function
+                                    .chunk
+                                    .get_span(self.frame.ip - 1);
+
+                                let name = self
+                                    .global_symbols
+                                    .get(*entry.key() as usize)
+                                    .cloned()
+                                    .unwrap_or(String::from("unkown???"));
+
+                                (NameError::Undefined(name).into(), span)
+                            })
+                        }
                     }
                 }
 
@@ -154,22 +182,30 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                 }
 
                 CreateFunction => {
-                    let value = self.read_constant().clone();
+                    let idx = self.read_u16();
+                    let value = self.get_constant(idx);
                     let function = match value {
-                        Value::Function(function) => function,
-                        _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
+                        Value::Function(function) => function.clone(),
+                        _ => return Err(self.error(TypeError::NotCallable(value.ntype()).into())),
                     };
-                    self.push(Value::Function(function))?;
+
+                    let closure = Closure {
+                        function,
+                        upvalues: Vec::new(),
+                    };
+
+                    self.push(Value::Closure(closure.into()))?;
                 }
 
                 CreateClosure => {
-                    let value = self.read_constant().clone();
+                    let idx = self.read_u16();
+                    let value = self.get_constant(idx);
                     let function = match value {
-                        Value::Function(function) => function,
-                        _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
+                        Value::Function(function) => function.clone(),
+                        _ => return Err(self.error(TypeError::NotCallable(value.ntype()).into())),
                     };
-                    let mut upvalues = Vec::with_capacity(function.upvalue_count as usize);
 
+                    let mut upvalues = Vec::with_capacity(function.upvalue_count as usize);
                     for _ in 0..function.upvalue_count {
                         let is_local = self.read_u8();
                         let index = self.read_u16() as usize;
@@ -189,7 +225,7 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
 
                 CallFunction => {
                     let argc = self.read_u8();
-                    let value = self.peek(argc as usize)?.clone();
+                    let value = self.peek(argc as usize)?;
 
                     if self.frames.len() >= CSS {
                         return Err(self.error(OverflowError::StackOverflow.into()));
@@ -198,18 +234,18 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                     match value {
                         Value::Closure(closure) => {
                             if argc != closure.function.arity {
-                                Err(self.error(
+                                return Err(self.error(
                                     TypeError::MismatchedArity {
                                         name: closure.function.name.0.clone(),
                                         expected: closure.function.arity,
                                         got: argc,
                                     }
                                     .into(),
-                                ))?;
+                                ));
                             }
 
                             let frame = CallFrame {
-                                closure,
+                                closure: closure.clone(),
                                 ip: 0,
                                 st: self.sp - argc as usize - 1,
                             };
@@ -221,18 +257,18 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                         }
                         Value::Function(function) => {
                             if argc != function.arity {
-                                Err(self.error(
+                                return Err(self.error(
                                     TypeError::MismatchedArity {
                                         name: function.name.0.clone(),
                                         expected: function.arity,
                                         got: argc,
                                     }
                                     .into(),
-                                ))?;
+                                ));
                             }
 
                             let closure = Closure {
-                                function,
+                                function: function.clone(),
                                 upvalues: Vec::new(),
                             };
 
@@ -280,135 +316,109 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
                 //     self.push(value)?;
                 // }
                 BinaryAdd => {
-                    let value = {
-                        let rhs = &self.stack[self.sp - 1];
-                        let lhs = &self.stack[self.sp - 2];
+                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let value = lhs.add(rhs).map_err(|e| self.error_1(e))?;
 
-                        lhs.add(rhs).map_err(|e| self.error_1(e))?
-                    };
-
-                    self.weak_pop(2)?;
                     self.push(value)?;
                 }
 
                 BinarySubtract => {
-                    let value = {
-                        let rhs = &self.stack[self.sp - 1];
-                        let lhs = &self.stack[self.sp - 2];
+                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let value = lhs.subtract(rhs).map_err(|e| self.error_1(e))?;
 
-                        lhs.subtract(rhs).map_err(|e| self.error_1(e))?
-                    };
-
-                    self.weak_pop(2)?;
                     self.push(value)?;
                 }
                 BinaryMultiply => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
                     let value = lhs.multiply(&rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryDivide => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.divide(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.divide(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryModulo => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.modulo(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.modulo(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryPower => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.power(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.power(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.equal(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.equal(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryNotEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.not_equal(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.not_equal(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryLess => {
-                    let value = {
-                        let rhs = &self.stack[self.sp - 1];
-                        let lhs = &self.stack[self.sp - 2];
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                        lhs.less_than(rhs).map_err(|e| self.error_1(e))?
-                    };
+                    let value = lhs.less_than(rhs).map_err(|e| self.error_1(e))?;
 
-                    self.weak_pop(2)?;
                     self.push(value)?;
                 }
 
                 BinaryLessEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.less_than_or_equal(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.less_than_or_equal(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryGreater => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.greater_than(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.greater_than(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryGreaterEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
                     let value = lhs
-                        .greater_than_or_equal(&rhs)
+                        .greater_than_or_equal(rhs)
                         .map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryAnd => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.and(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.and(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryOr => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.or(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.or(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
                 BinaryJoin => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
+                    let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.join(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.join(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
@@ -422,18 +432,12 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
     }
 
     fn capture_upvalue(&mut self, location: usize) -> Upvalue {
-        // let location: *mut Value = &mut self.stack[location];
-
         for upvalue in self.open_upvalues.iter_mut() {
             if let Upvalue::Open(loc) = upvalue {
                 if *loc == location {
                     return upvalue.clone();
                 }
             }
-
-            // if upvalue.location == location {
-            //     return upvalue.clone();
-            // }
         }
 
         let upvalue = Upvalue::new(location);
@@ -447,16 +451,15 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
             return;
         }
 
-        // for upvalue in self.open_upvalues.iter_mut() {
-        //     if upvalue.close_if(&self.stack, |loc| loc >= last) {
-
-        //     }
-        // }
-
         for idx in (0..self.open_upvalues.len()).rev() {
             let upvalue = &mut self.open_upvalues[idx];
-            if upvalue.close_if(&self.stack, |loc| loc >= last) {
-                self.open_upvalues.swap_remove(idx);
+            if let Upvalue::Open(l) = upvalue {
+                if *l >= last {
+                    let value = self.stack[*l].clone();
+                    *upvalue = Upvalue::Closed(value);
+
+                    self.open_upvalues.swap_remove(idx);
+                }
             }
         }
     }
@@ -491,37 +494,35 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Result<Value, ErrorS> {
+    pub fn pop(&mut self) -> Result<&Value, ErrorS> {
         if self.sp == 0 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
         }
         self.sp -= 1;
 
-        let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
-        // let popped = self.stack[self.sp].clone();
-
-        Ok(popped)
-    }
-
-    #[inline]
-    pub fn weak_pop(&mut self, n: usize) -> Result<(), ErrorS> {
-        if self.sp < n {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
-
-        self.sp -= n;
-
         // let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
         // let popped = self.stack[self.sp].clone();
 
-        Ok(())
+        Ok(&self.stack[self.sp])
+    }
+
+    #[inline]
+    pub fn pop_double_ref(&mut self) -> Result<(&Value, &Value), ErrorS> {
+        if self.sp < 2 {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+        self.sp -= 2;
+
+        Ok((&self.stack[self.sp], &self.stack[self.sp + 1]))
     }
 
     #[inline]
     pub fn peek(&self, distance: usize) -> Result<&Value, ErrorS> {
-        self.stack
-            .get(self.sp - (distance + 1))
-            .ok_or(self.error(OverflowError::StackUnderflow.into()))
+        if self.sp < distance + 1 {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+
+        Ok(&self.stack[self.sp - distance - 1])
     }
 
     #[inline]
@@ -566,392 +567,392 @@ impl<const SS: usize, const CSS: usize> VM<SS, CSS> {
         &self.frame.closure.function.chunk.symbols[idx as usize]
     }
 
-    pub fn profile(
-        &mut self,
-    ) -> Result<(Value, FxHashMap<u8, (usize, std::time::Duration)>), ErrorS> {
-        let mut profile: FxHashMap<u8, (usize, std::time::Duration)> = FxHashMap::default();
-        let mut return_value = Value::None;
-        loop {
-            if self.frame.ip >= self.frame.closure.function.chunk.len() {
-                return Err(self.error(OverflowError::InstructionOverflow.into()));
-            }
-
-            let op = self.read_u8();
-
-            let start = std::time::Instant::now();
-
-            #[allow(non_upper_case_globals)]
-            match op {
-                Halt => {
-                    println!("Halt");
-                    break;
-                }
-
-                Return => {
-                    let result = self.pop()?;
-                    self.close_upvalues(self.frame.st);
-
-                    // clean up stack
-                    // for i in self.frame.st..self.sp {
-                    //     self.stack[i] = Value::None;
-                    // }
-                    self.sp = self.frame.st;
-
-                    // self.stack.truncate(self.frame.st);
-
-                    match self.frames.pop() {
-                        Some(frame) => {
-                            self.frame = frame;
-                            self.push(result)?;
-                        }
-                        None => {
-                            return_value = result;
-                            break;
-                        }
-                    }
-                }
-
-                Pop => {
-                    self.pop()?;
-                }
-
-                LoadConst => {
-                    let constant = self.read_constant().clone();
-                    self.push(constant)?;
-                }
-
-                LoadLocal => {
-                    let idx = self.read_u16() as usize;
-                    let value = &self.stack[self.frame.st + idx];
-                    self.push(value.clone())?;
-                }
-
-                SetLocal => {
-                    let idx = self.read_u16() as usize;
-                    let value = self.peek(0)?;
-
-                    self.stack[self.frame.st + idx] = value.clone();
-                }
-
-                LoadGlobal => {
-                    let name = self.read_symbol().to_string();
-
-                    match self.globals.get(&name) {
-                        Some(value) => self.push(value.clone())?,
-                        None => return Err(self.error(NameError::Undefined(name).into())),
-                    }
-                }
-
-                DefineGlobal => {
-                    let name = self.read_symbol().to_string();
-                    let value = self.pop()?;
-                    self.globals.insert(name, value);
-                }
-
-                SetGlobal => {
-                    let name = self.read_symbol().to_string();
-                    let value = self.peek(0)?.clone();
-
-                    match self.globals.entry(name) {
-                        Entry::Occupied(mut entry) => {
-                            entry.insert(value);
-                        }
-                        Entry::Vacant(entry) => Err({
-                            let span = self.frame.closure.function.chunk.get_span(self.frame.ip);
-                            (NameError::Undefined(entry.key().to_string()).into(), span)
-                        })?,
-                    }
-                }
-
-                LoadUpvalue => {
-                    let idx = self.read_u16() as usize;
-                    let upvalue = &self.frame.closure.upvalues[idx];
-                    let value = upvalue.get(&self.stack);
-                    self.push(value)?;
-                }
-
-                CloseUpvalue => {
-                    self.close_upvalues(self.sp - 1);
-                    self.pop()?;
-                }
-
-                CreateFunction => {
-                    let value = self.read_constant().clone();
-                    let function = match value {
-                        Value::Function(function) => function,
-                        _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
-                    };
-                    self.push(Value::Function(function))?;
-                }
-
-                CreateClosure => {
-                    let value = self.read_constant().clone();
-                    let function = match value {
-                        Value::Function(function) => function,
-                        _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
-                    };
-                    let mut upvalues = Vec::with_capacity(function.upvalue_count as usize);
-
-                    for _ in 0..function.upvalue_count {
-                        let is_local = self.read_u8();
-                        let index = self.read_u16() as usize;
-
-                        let upvalue: Upvalue = if is_local != 0 {
-                            self.capture_upvalue(self.frame.st + index)
-                        } else {
-                            self.frame.closure.upvalues[index].clone()
-                        };
-
-                        upvalues.push(upvalue);
-                    }
-
-                    let closure = Closure { function, upvalues };
-                    self.push(Value::Closure(Rc::new(closure)))?;
-                }
-
-                CallFunction => {
-                    let argc = self.read_u8();
-                    let value = self.peek(argc as usize)?.clone();
-
-                    if self.frames.len() >= CSS {
-                        return Err(self.error(OverflowError::StackOverflow.into()));
-                    }
-
-                    match value {
-                        Value::Closure(closure) => {
-                            if argc != closure.function.arity {
-                                Err(self.error(
-                                    TypeError::MismatchedArity {
-                                        name: closure.function.name.0.clone(),
-                                        expected: closure.function.arity,
-                                        got: argc,
-                                    }
-                                    .into(),
-                                ))?;
-                            }
-
-                            let frame = CallFrame {
-                                closure,
-                                ip: 0,
-                                st: self.sp - argc as usize - 1,
-                            };
-
-                            unsafe {
-                                self.frames
-                                    .push_unchecked(std::mem::replace(&mut self.frame, frame))
-                            }
-                        }
-                        Value::Function(function) => {
-                            if argc != function.arity {
-                                Err(self.error(
-                                    TypeError::MismatchedArity {
-                                        name: function.name.0.clone(),
-                                        expected: function.arity,
-                                        got: argc,
-                                    }
-                                    .into(),
-                                ))?;
-                            }
-
-                            let closure = Closure {
-                                function,
-                                upvalues: Vec::new(),
-                            };
-
-                            let frame = CallFrame {
-                                closure: Rc::new(closure),
-                                ip: 0,
-                                st: self.sp - argc as usize - 1,
-                            };
-
-                            unsafe {
-                                self.frames
-                                    .push_unchecked(std::mem::replace(&mut self.frame, frame))
-                            }
-                        }
-
-                        _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
-                    }
-                }
-
-                Jump => {
-                    let offset = self.read_u16() as usize;
-                    self.frame.ip += offset;
-                }
-                JumpIfFalse => {
-                    let offset = self.read_u16() as usize;
-                    let value = self.peek(0)?;
-
-                    if !value.is_truthy().map_err(|e| self.error_1(e))? {
-                        self.frame.ip += offset;
-                    }
-                }
-
-                UnaryNegate => {
-                    let value = self.pop()?.negate().map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                UnaryNot => {
-                    let value = self.pop()?.not().map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                // UnarySpread => {
-                //     let value = self.pop()?.spread().map_err(|e| self.error_1(e))?;
-                //     self.push(value)?;
-                // }
-                BinaryAdd => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.add(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinarySubtract => {
-                    let value = {
-                        let rhs = &self.stack[self.sp - 1];
-                        let lhs = &self.stack[self.sp - 2];
-
-                        lhs.subtract(rhs).map_err(|e| self.error_1(e))?
-                    };
-
-                    self.weak_pop(2)?;
-                    self.push(value)?;
-                }
-
-                BinaryMultiply => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.multiply(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryDivide => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.divide(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryModulo => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.modulo(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryPower => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.power(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.equal(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryNotEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.not_equal(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryLess => {
-                    let value = {
-                        let rhs = &self.stack[self.sp - 1];
-                        let lhs = &self.stack[self.sp - 2];
-
-                        lhs.less_than(rhs).map_err(|e| self.error_1(e))?
-                    };
-
-                    self.weak_pop(2)?;
-                    self.push(value)?;
-                }
-
-                BinaryLessEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.less_than_or_equal(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryGreater => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.greater_than(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryGreaterEqual => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs
-                        .greater_than_or_equal(&rhs)
-                        .map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryAnd => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.and(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryOr => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.or(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                BinaryJoin => {
-                    let rhs = self.pop()?;
-                    let lhs = self.pop()?;
-
-                    let value = lhs.join(&rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
-                }
-
-                op => {
-                    unimplemented!("Opcode: {:?}", OpCode::from(op));
-                }
-            }
-
-            let elapsed = start.elapsed();
-
-            match profile.entry(op) {
-                Entry::Occupied(entry) => {
-                    let (c, time) = entry.into_mut();
-                    *time += elapsed;
-                    *c += 1
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert((1, elapsed));
-                }
-            }
-        }
-
-        Ok((return_value, profile))
-    }
+    // pub fn profile(
+    //     &mut self,
+    // ) -> Result<(Value, FxHashMap<u8, (usize, std::time::Duration)>), ErrorS> {
+    //     let mut profile: FxHashMap<u8, (usize, std::time::Duration)> = FxHashMap::default();
+    //     let mut return_value = Value::None;
+    //     loop {
+    //         if self.frame.ip >= self.frame.closure.function.chunk.len() {
+    //             return Err(self.error(OverflowError::InstructionOverflow.into()));
+    //         }
+
+    //         let op = self.read_u8();
+
+    //         let start = std::time::Instant::now();
+
+    //         #[allow(non_upper_case_globals)]
+    //         match op {
+    //             Halt => {
+    //                 println!("Halt");
+    //                 break;
+    //             }
+
+    //             Return => {
+    //                 let result = self.pop()?.clone();
+    //                 self.close_upvalues(self.frame.st);
+
+    //                 // clean up stack
+    //                 // for i in self.frame.st..self.sp {
+    //                 //     self.stack[i] = Value::None;
+    //                 // }
+    //                 self.sp = self.frame.st;
+
+    //                 // self.stack.truncate(self.frame.st);
+
+    //                 match self.frames.pop() {
+    //                     Some(frame) => {
+    //                         self.frame = frame;
+    //                         self.push(result)?;
+    //                     }
+    //                     None => {
+    //                         return_value = result;
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+
+    //             Pop => {
+    //                 self.pop()?;
+    //             }
+
+    //             LoadConst => {
+    //                 let constant = self.read_constant().clone();
+    //                 self.push(constant)?;
+    //             }
+
+    //             LoadLocal => {
+    //                 let idx = self.read_u16() as usize;
+    //                 let value = &self.stack[self.frame.st + idx];
+    //                 self.push(value.clone())?;
+    //             }
+
+    //             SetLocal => {
+    //                 let idx = self.read_u16() as usize;
+    //                 let value = self.peek(0)?;
+
+    //                 self.stack[self.frame.st + idx] = value.clone();
+    //             }
+
+    //             LoadGlobal => {
+    //                 let name = self.read_symbol().to_string();
+
+    //                 match self.globals.get(&name) {
+    //                     Some(value) => self.push(value.clone())?,
+    //                     None => return Err(self.error(NameError::Undefined(name).into())),
+    //                 }
+    //             }
+
+    //             DefineGlobal => {
+    //                 let name = self.read_symbol().to_string();
+    //                 let value = self.pop()?.clone();
+    //                 self.globals.insert(name, value);
+    //             }
+
+    //             SetGlobal => {
+    //                 let name = self.read_symbol().to_string();
+    //                 let value = self.peek(0)?.clone();
+
+    //                 match self.globals.entry(name) {
+    //                     Entry::Occupied(mut entry) => {
+    //                         entry.insert(value);
+    //                     }
+    //                     Entry::Vacant(entry) => Err({
+    //                         let span = self.frame.closure.function.chunk.get_span(self.frame.ip);
+    //                         (NameError::Undefined(entry.key().to_string()).into(), span)
+    //                     })?,
+    //                 }
+    //             }
+
+    //             LoadUpvalue => {
+    //                 let idx = self.read_u16() as usize;
+    //                 let upvalue = &self.frame.closure.upvalues[idx];
+    //                 let value = upvalue.get(&self.stack);
+    //                 self.push(value)?;
+    //             }
+
+    //             CloseUpvalue => {
+    //                 self.close_upvalues(self.sp - 1);
+    //                 self.pop()?;
+    //             }
+
+    //             CreateFunction => {
+    //                 let value = self.read_constant().clone();
+    //                 let function = match value {
+    //                     Value::Function(function) => function,
+    //                     _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
+    //                 };
+    //                 self.push(Value::Function(function))?;
+    //             }
+
+    //             CreateClosure => {
+    //                 let value = self.read_constant().clone();
+    //                 let function = match value {
+    //                     Value::Function(function) => function,
+    //                     _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
+    //                 };
+    //                 let mut upvalues = Vec::with_capacity(function.upvalue_count as usize);
+
+    //                 for _ in 0..function.upvalue_count {
+    //                     let is_local = self.read_u8();
+    //                     let index = self.read_u16() as usize;
+
+    //                     let upvalue: Upvalue = if is_local != 0 {
+    //                         self.capture_upvalue(self.frame.st + index)
+    //                     } else {
+    //                         self.frame.closure.upvalues[index].clone()
+    //                     };
+
+    //                     upvalues.push(upvalue);
+    //                 }
+
+    //                 let closure = Closure { function, upvalues };
+    //                 self.push(Value::Closure(Rc::new(closure)))?;
+    //             }
+
+    //             CallFunction => {
+    //                 let argc = self.read_u8();
+    //                 let value = self.peek(argc as usize)?.clone();
+
+    //                 if self.frames.len() >= CSS {
+    //                     return Err(self.error(OverflowError::StackOverflow.into()));
+    //                 }
+
+    //                 match value {
+    //                     Value::Closure(closure) => {
+    //                         if argc != closure.function.arity {
+    //                             Err(self.error(
+    //                                 TypeError::MismatchedArity {
+    //                                     name: closure.function.name.0.clone(),
+    //                                     expected: closure.function.arity,
+    //                                     got: argc,
+    //                                 }
+    //                                 .into(),
+    //                             ))?;
+    //                         }
+
+    //                         let frame = CallFrame {
+    //                             closure,
+    //                             ip: 0,
+    //                             st: self.sp - argc as usize - 1,
+    //                         };
+
+    //                         unsafe {
+    //                             self.frames
+    //                                 .push_unchecked(std::mem::replace(&mut self.frame, frame))
+    //                         }
+    //                     }
+    //                     Value::Function(function) => {
+    //                         if argc != function.arity {
+    //                             Err(self.error(
+    //                                 TypeError::MismatchedArity {
+    //                                     name: function.name.0.clone(),
+    //                                     expected: function.arity,
+    //                                     got: argc,
+    //                                 }
+    //                                 .into(),
+    //                             ))?;
+    //                         }
+
+    //                         let closure = Closure {
+    //                             function,
+    //                             upvalues: Vec::new(),
+    //                         };
+
+    //                         let frame = CallFrame {
+    //                             closure: Rc::new(closure),
+    //                             ip: 0,
+    //                             st: self.sp - argc as usize - 1,
+    //                         };
+
+    //                         unsafe {
+    //                             self.frames
+    //                                 .push_unchecked(std::mem::replace(&mut self.frame, frame))
+    //                         }
+    //                     }
+
+    //                     _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
+    //                 }
+    //             }
+
+    //             Jump => {
+    //                 let offset = self.read_u16() as usize;
+    //                 self.frame.ip += offset;
+    //             }
+    //             JumpIfFalse => {
+    //                 let offset = self.read_u16() as usize;
+    //                 let value = self.peek(0)?;
+
+    //                 if !value.is_truthy().map_err(|e| self.error_1(e))? {
+    //                     self.frame.ip += offset;
+    //                 }
+    //             }
+
+    //             UnaryNegate => {
+    //                 let value = self.pop()?.negate().map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             UnaryNot => {
+    //                 let value = self.pop()?.not().map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             // UnarySpread => {
+    //             //     let value = self.pop()?.spread().map_err(|e| self.error_1(e))?;
+    //             //     self.push(value)?;
+    //             // }
+    //             BinaryAdd => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.add(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinarySubtract => {
+    //                 let value = {
+    //                     let rhs = &self.stack[self.sp - 1];
+    //                     let lhs = &self.stack[self.sp - 2];
+
+    //                     lhs.subtract(rhs).map_err(|e| self.error_1(e))?
+    //                 };
+
+    //                 self.weak_pop(2)?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryMultiply => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.multiply(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryDivide => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.divide(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryModulo => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.modulo(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryPower => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.power(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryEqual => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.equal(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryNotEqual => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.not_equal(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryLess => {
+    //                 let value = {
+    //                     let rhs = &self.stack[self.sp - 1];
+    //                     let lhs = &self.stack[self.sp - 2];
+
+    //                     lhs.less_than(rhs).map_err(|e| self.error_1(e))?
+    //                 };
+
+    //                 self.weak_pop(2)?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryLessEqual => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.less_than_or_equal(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryGreater => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.greater_than(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryGreaterEqual => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs
+    //                     .greater_than_or_equal(&rhs)
+    //                     .map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryAnd => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.and(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryOr => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.or(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             BinaryJoin => {
+    //                 let rhs = self.pop()?;
+    //                 let lhs = self.pop()?;
+
+    //                 let value = lhs.join(&rhs).map_err(|e| self.error_1(e))?;
+    //                 self.push(value)?;
+    //             }
+
+    //             op => {
+    //                 unimplemented!("Opcode: {:?}", OpCode::from(op));
+    //             }
+    //         }
+
+    //         let elapsed = start.elapsed();
+
+    //         match profile.entry(op) {
+    //             Entry::Occupied(entry) => {
+    //                 let (c, time) = entry.into_mut();
+    //                 *time += elapsed;
+    //                 *c += 1
+    //             }
+    //             Entry::Vacant(entry) => {
+    //                 entry.insert((1, elapsed));
+    //             }
+    //         }
+    //     }
+
+    //     Ok((return_value, profile))
+    // }
 }
 
 pub struct CallFrame {

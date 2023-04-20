@@ -13,6 +13,7 @@ use super::{
 
 pub struct Compiler {
     level: Level,
+    global_symbols: Pool<String, u16>,
 }
 
 impl Compiler {
@@ -32,6 +33,7 @@ impl Compiler {
                 symbol_pool: Pool::new(),
                 constant_pool: Pool::new(),
             },
+            global_symbols: Pool::new(),
         }
     }
 
@@ -107,6 +109,11 @@ impl Compiler {
     }
 
     #[inline]
+    fn add_global_symbol(&mut self, symbol: String) -> u16 {
+        self.global_symbols.add(symbol)
+    }
+
+    #[inline]
     fn add_symbol_ref(&mut self, symbol: &String) -> u16 {
         self.level.symbol_pool.add_ref(symbol)
     }
@@ -147,7 +154,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(mut self, ast: &Vec<Spanned<Expr>>) -> Result<Function, ErrorS> {
+    pub fn compile(mut self, ast: &Vec<Spanned<Expr>>) -> Result<VmEntry, ErrorS> {
         for expr in ast {
             // let pop = match expr.0 {
             //     Expr::Block(_) => false,
@@ -162,11 +169,13 @@ impl Compiler {
 
             //     _ => false,
             // };
-
             self.compile_expr(expr)?;
         }
 
-        Ok(self.level.finish().0)
+        Ok(VmEntry {
+            global_symbols: self.global_symbols.take(),
+            function: self.level.finish().0,
+        })
     }
 
     fn compile_block(&mut self, exprs: &Vec<Spanned<Expr>>, span: &Span) -> Result<(), ErrorS> {
@@ -269,16 +278,16 @@ impl Compiler {
                 let (function, upvalues) = self.exit_level();
                 let value = Value::Function(Rc::new(function));
                 let offset = self.add_constant(value);
-                // if upvalues.len() > 0 {
-                self.write_op_u16(OpCode::CreateClosure, offset, *span);
+                if upvalues.len() > 0 {
+                    self.write_op_u16(OpCode::CreateClosure, offset, *span);
 
-                for Upvalue(idx, is_local) in upvalues {
-                    self.write_u8(is_local.into(), *span);
-                    self.write_u16(idx, *span);
+                    for Upvalue(idx, is_local) in upvalues {
+                        self.write_u8(is_local.into(), *span);
+                        self.write_u16(idx, *span);
+                    }
+                } else {
+                    self.write_op_u16(OpCode::CreateFunction, offset, *span);
                 }
-                // } else {
-                //     self.write_op_u16(OpCode::CreateFunction, offset, *span);
-                // }
 
                 // function compiled at this point
                 if self.is_global() {
@@ -370,7 +379,7 @@ impl Compiler {
         } else if let Some(upvalue_idx) = self.level.resolve_upvalue(name) {
             self.write_op_u16(OpCode::LoadUpvalue, upvalue_idx, span);
         } else {
-            let offset = self.add_symbol(name.to_string());
+            let offset = self.add_global_symbol(name.to_string());
             self.write_op_u16(OpCode::LoadGlobal, offset, span);
         }
     }
@@ -381,7 +390,7 @@ impl Compiler {
         } else if let Some(upvalue_idx) = self.level.resolve_upvalue(name) {
             self.write_op_u16(OpCode::SetUpvalue, upvalue_idx, span);
         } else {
-            let offset = self.add_symbol(name.to_string());
+            let offset = self.add_global_symbol(name.to_string());
             self.write_op_u16(OpCode::SetGlobal, offset, span);
         }
     }
@@ -474,7 +483,7 @@ impl Level {
         };
 
         if let Some(local_idx) = local_idx {
-            let upvalue_idx = self.add_upvalue(local_idx, true);
+            let upvalue_idx: u16 = self.add_upvalue(local_idx, true);
             return Some(upvalue_idx);
         };
 
@@ -505,4 +514,9 @@ impl Level {
             }
         }
     }
+}
+
+pub struct VmEntry {
+    pub global_symbols: Vec<String>,
+    pub function: Function,
 }
