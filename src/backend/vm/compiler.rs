@@ -2,7 +2,9 @@ use std::rc::Rc;
 
 use crate::{
     backend::utils::pool::Pool,
-    prelude::{ErrorS, Expr, Op, OverflowError, Span, Spanned},
+    prelude::{
+        BuiltinFnMap, BuiltinListFn, ErrorS, Expr, ImportError, Op, OverflowError, Span, Spanned,
+    },
 };
 
 use super::{
@@ -11,12 +13,13 @@ use super::{
     value::{Function, Value},
 };
 
-pub struct Compiler {
+pub struct Compiler<Data = ()> {
     level: Level,
     global_symbols: Pool<String, u16>,
+    builtins: BuiltinFnMap<Data>,
 }
 
-impl Compiler {
+impl<Data> Compiler<Data> {
     pub fn new() -> Self {
         Self {
             level: Level {
@@ -34,6 +37,14 @@ impl Compiler {
                 constant_pool: Pool::new(),
             },
             global_symbols: Pool::new(),
+            builtins: BuiltinFnMap::default(),
+        }
+    }
+
+    pub fn add_builtins(&mut self, builtins: BuiltinListFn<Data>) {
+        for (name, func) in builtins() {
+            let name = self.global_symbols.add(name);
+            self.builtins.insert(name, func);
         }
     }
 
@@ -114,11 +125,6 @@ impl Compiler {
     }
 
     #[inline]
-    fn add_symbol_ref(&mut self, symbol: &String) -> u16 {
-        self.level.symbol_pool.add_ref(symbol)
-    }
-
-    #[inline]
     fn enter_level(&mut self, level: Level) {
         let level = std::mem::replace(&mut self.level, level);
         self.level.enclosing = Some(Box::new(level));
@@ -139,12 +145,13 @@ impl Compiler {
     fn exit_scope(&mut self, span: &Span) {
         self.level.scope_depth -= 1;
 
+        let mut ops = Vec::new();
         while let Some(local) = self.level.locals.last() {
             if local.depth > self.level.scope_depth {
                 if local.is_captured {
-                    self.write_op(OpCode::CloseUpvalue, *span);
+                    ops.push(OpCode::CloseUpvalue);
                 } else {
-                    self.write_op(OpCode::Pop, *span);
+                    ops.push(OpCode::Pop);
                 };
 
                 self.level.locals.pop();
@@ -152,46 +159,81 @@ impl Compiler {
                 break;
             }
         }
+
+        if ops.len() > 0 {
+            self.write_op(OpCode::BlockResult, *span);
+
+            for op in ops.into_iter() {
+                self.write_op(op, *span);
+            }
+            self.write_op(OpCode::BlockReturn, *span);
+        }
     }
 
-    pub fn compile(mut self, ast: &Vec<Spanned<Expr>>) -> Result<VmEntry, ErrorS> {
-        for expr in ast {
-            // let pop = match expr.0 {
-            //     Expr::Block(_) => false,
-            //     Expr::Assignment(_, _) => false,
-            //     Expr::Declaration(_, _) => false,
-            //     Expr::MultiDeclaration(_, _) => false,
-            //     Expr::MultiForLoop(_, _, _) => false,
-            //     Expr::Function(_, _, _) => false,
-            //     Expr::ForLoop(_, _, _) => false,
-            //     Expr::Import(_) => false,
-            //     Expr::Conditional(_, _, _) => false,
+    pub fn compile(mut self, ast: &Vec<Spanned<Expr>>) -> Result<Script<Data>, ErrorS> {
+        self.compile_exprs(ast)?;
 
-            //     _ => false,
-            // };
-            self.compile_expr(expr)?;
-        }
-
-        Ok(VmEntry {
+        Ok(Script {
             global_symbols: self.global_symbols.take(),
             function: self.level.finish().0,
+            builtins: self.builtins,
         })
+    }
+
+    fn compile_exprs(&mut self, exprs: &Vec<Spanned<Expr>>) -> Result<Span, ErrorS> {
+        let mut span = Span::default();
+        if exprs.len() == 0 {
+            return Ok(span);
+        }
+
+        for i in 0..exprs.len() - 1 {
+            let expr = &exprs[i];
+            self.compile_expr(expr, true)?;
+
+            span = expr.1;
+        }
+
+        if let Some(expr) = exprs.last() {
+            self.compile_expr(expr, false)?;
+
+            span = expr.1;
+        }
+
+        Ok(span)
+    }
+
+    fn compile_block_inner<'a>(
+        &mut self,
+        exprs: &'a Vec<Spanned<Expr>>,
+        span: &'a Span,
+    ) -> Result<&'a Span, ErrorS> {
+        if exprs.len() == 0 {
+            return Ok(span);
+        }
+
+        let mut span = span;
+        for i in 0..exprs.len() - 1 {
+            let expr = &exprs[i];
+            self.compile_expr(expr, true)?;
+            span = &expr.1;
+        }
+
+        if let Some(expr) = exprs.last() {
+            self.compile_expr(expr, false)?;
+            span = &expr.1;
+        }
+
+        Ok(span)
     }
 
     fn compile_block(&mut self, exprs: &Vec<Spanned<Expr>>, span: &Span) -> Result<(), ErrorS> {
         self.enter_scope();
-        let mut span = span;
-        for expr in exprs {
-            self.compile_expr(expr)?;
-            span = &expr.1;
-        }
-
-        // self.write_op(OpCode::Return, *span);
+        let span = self.compile_block_inner(exprs, span)?;
         self.exit_scope(span);
         Ok(())
     }
 
-    fn compile_expr(&mut self, (expr, span): &Spanned<Expr>) -> Result<(), ErrorS> {
+    fn compile_expr(&mut self, (expr, span): &Spanned<Expr>, pop: bool) -> Result<(), ErrorS> {
         match expr {
             Expr::Literal(value) => {
                 let offset = self.add_constant(value.into());
@@ -206,21 +248,33 @@ impl Compiler {
                 self.compile_block(exprs, span)?;
             }
 
+            Expr::Import((name, span), body) => match body {
+                Some(body) => {
+                    self.compile_exprs(body)?;
+                }
+                None => {
+                    return Err((
+                        ImportError::UnresolvedImport(name.to_string()).into(),
+                        *span,
+                    ))
+                }
+            },
+
             Expr::Declaration((name, span), value) => {
                 if self.is_global() {
-                    self.compile_expr(value)?;
+                    self.compile_expr(value, false)?;
 
-                    let offset = self.add_symbol_ref(name);
+                    let offset = self.add_global_symbol(name.to_string());
                     self.write_op_u16(OpCode::DefineGlobal, offset, *span);
                 } else {
                     self.define_local(name, *span)?;
-                    self.compile_expr(value)?;
+                    self.compile_expr(value, false)?;
                     self.set_variable(name, *span);
                 }
             }
 
             Expr::Assignment((name, span), value) => {
-                self.compile_expr(value)?;
+                self.compile_expr(value, false)?;
                 self.set_variable(name, *span);
             }
 
@@ -233,13 +287,64 @@ impl Compiler {
                 self.get_variable(name, *c_span);
 
                 for arg in args {
-                    self.compile_expr(arg)?;
+                    self.compile_expr(arg, false)?;
                 }
 
                 self.write_op_u8(OpCode::CallFunction, arity, *span);
             }
 
+            Expr::BuiltinCall((name, c_span), args) => {
+                let arity: u8 = args
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
+
+                for arg in args {
+                    self.compile_expr(arg, false)?;
+                }
+
+                self.write_op(OpCode::CallBuiltin, *span);
+
+                let name = self.add_global_symbol(name.to_string());
+                self.write_u16(name, *span);
+                self.write_u8(arity, *c_span);
+            }
+
+            Expr::ContextWrapped((name, c_span), args, varname, body) => {
+                let arity: u8 = args
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
+
+                for arg in args {
+                    self.compile_expr(arg, false)?;
+                }
+
+                self.write_op(OpCode::EnterContext, *span);
+
+                let name = self.add_global_symbol(name.to_string());
+                self.write_u16(name, *span);
+                self.write_u8(arity, *c_span);
+
+                self.enter_scope();
+
+                if let Some((varname, span)) = varname {
+                    self.define_local(varname, *span)?;
+                    self.set_variable(varname, *span);
+                }
+
+                self.compile_exprs(body)?;
+
+                self.exit_scope(span);
+
+                self.write_op(OpCode::ExitContext, *span);
+            }
+
             Expr::Function((name, fn_span), arguments, body) => {
+                // if self.level.scope_depth > 1 {
+                //     return Err(())
+                // }
+
                 let arity: u8 = arguments
                     .len()
                     .try_into()
@@ -255,25 +360,26 @@ impl Compiler {
                     locals: Vec::new(),
                     upvalues: Vec::new(),
                     enclosing: None,
-                    scope_depth: self.level.scope_depth + 1,
+                    scope_depth: self.level.scope_depth,
                     symbol_pool: Pool::new(),
                     constant_pool: Pool::new(),
                 };
 
                 self.enter_level(level);
+                self.enter_scope();
 
                 self.define_local(name, *fn_span)?;
+                // self.set_variable(name, *span);
 
                 for (name, span) in arguments {
                     self.define_local(name, *span)?;
                 }
 
-                for expr in body {
-                    self.compile_expr(expr)?;
-                }
-
+                self.compile_exprs(body)?;
                 // let last_span = self.level.function.chunk.last_span();
                 // self.write_op(OpCode::Return, last_span);
+
+                self.exit_scope(span);
 
                 let (function, upvalues) = self.exit_level();
                 let value = Value::Function(Rc::new(function));
@@ -291,7 +397,7 @@ impl Compiler {
 
                 // function compiled at this point
                 if self.is_global() {
-                    let offset = self.add_symbol_ref(name);
+                    let offset = self.add_global_symbol(name.to_string());
                     self.write_op_u16(OpCode::DefineGlobal, offset, *span);
                 } else {
                     self.define_local(name, *span)?;
@@ -300,7 +406,7 @@ impl Compiler {
             }
 
             Expr::Conditional(condition, then, otherwise) => {
-                self.compile_expr(condition)?;
+                self.compile_expr(condition, false)?;
 
                 // if the condition is false, go to else
                 let else_jump = self.write_jump(OpCode::JumpIfFalse, *span);
@@ -324,8 +430,8 @@ impl Compiler {
             }
 
             Expr::Binary(operand, lhs, rhs) => {
-                self.compile_expr(lhs)?;
-                self.compile_expr(rhs)?;
+                self.compile_expr(lhs, false)?;
+                self.compile_expr(rhs, false)?;
 
                 let opcode = match operand {
                     Op::Add => OpCode::BinaryAdd,
@@ -351,7 +457,7 @@ impl Compiler {
             }
 
             Expr::Unary(operand, rhs) => {
-                self.compile_expr(rhs)?;
+                self.compile_expr(rhs, false)?;
 
                 let opcode = match operand {
                     Op::Not => OpCode::UnaryNot,
@@ -366,9 +472,23 @@ impl Compiler {
             _ => todo!(),
         }
 
-        // if pop {
-        //     self.write_op(OpCode::Pop, *span);
-        // }
+        if pop
+            && match expr {
+                // Expr::Assignment(_, _) => self.is_global(),
+                Expr::Declaration(_, _) => false,
+                Expr::MultiDeclaration(_, _) => false,
+                Expr::MultiForLoop(_, _, _) => false,
+                Expr::Function(_, _, _) => false,
+                Expr::ForLoop(_, _, _) => false,
+                Expr::Import(_, _) => false,
+                Expr::Conditional(_, _, _) => false,
+                Expr::ContextWrapped(_, _, _, _) => false,
+
+                _ => true,
+            }
+        {
+            self.write_op(OpCode::Pop, *span);
+        }
 
         Ok(())
     }
@@ -395,7 +515,7 @@ impl Compiler {
         }
     }
 
-    // todo: remove span and error
+    // todo: remove unused span and error
     fn define_local(&mut self, name: &str, _: Span) -> Result<(), ErrorS> {
         for i in (0..self.level.locals.len()).rev() {
             let local = &self.level.locals[i];
@@ -458,6 +578,13 @@ impl Level {
             .take_inplace(&mut self.function.chunk.constants);
 
         let last_span = self.function.chunk.last_span();
+
+        // if let Some(last_op) = self.function.chunk.ops.last() {
+        //     if *last_op == Pop {
+        //         self.function.chunk.ops.pop();
+        //     }
+        // }
+
         self.function.chunk.write_op(OpCode::Return, last_span);
 
         (self.function, self.upvalues)
@@ -516,7 +643,8 @@ impl Level {
     }
 }
 
-pub struct VmEntry {
+pub struct Script<Data> {
     pub global_symbols: Vec<String>,
     pub function: Function,
+    pub builtins: BuiltinFnMap<Data>,
 }

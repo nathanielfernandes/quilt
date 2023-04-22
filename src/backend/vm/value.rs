@@ -29,6 +29,44 @@ pub enum Value {
     Closure(Rc<Closure>),
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::None => write!(f, "none"),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Int(i) => write!(f, "{}", i),
+            Value::Float(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
+            Value::List(l) => {
+                write!(f, "[")?;
+                for (i, v) in l.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "]")
+            }
+            Value::Pair(pair) => write!(f, "({}, {})", pair.0, pair.1),
+            Value::Range(l, r) => write!(f, "{}:{}", l, r),
+            Value::Spread(l) => {
+                for (i, v) in l.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                Ok(())
+            }
+            Value::Special(special) => write!(f, "<special id={} value={}>", special.0, special.1),
+
+            Value::Function(func) => write!(f, "<function {}>", func.name.0),
+            Value::Closure(closure) => write!(f, "<closure {}>", closure.function.name.0),
+        }
+    }
+}
+
 impl Value {
     #[inline]
     pub fn ntype(&self) -> &'static str {
@@ -122,50 +160,50 @@ impl Hash for Value {
 
 impl Eq for Value {}
 
-impl From<crate::shared::Value> for Value {
-    fn from(value: crate::shared::Value) -> Self {
+impl From<crate::shared::ParserValue> for Value {
+    fn from(value: crate::shared::ParserValue) -> Self {
         match value {
-            crate::shared::Value::None => Value::None,
-            crate::shared::Value::Bool(b) => Value::Bool(b),
-            crate::shared::Value::Int(i) => Value::Int(i),
-            crate::shared::Value::Float(f) => Value::Float(f),
-            crate::shared::Value::Color(c) => Value::Color(c),
-            crate::shared::Value::Str(s) => Value::String(Rc::new(s)),
-            crate::shared::Value::List(l) => {
+            crate::shared::ParserValue::None => Value::None,
+            crate::shared::ParserValue::Bool(b) => Value::Bool(b),
+            crate::shared::ParserValue::Int(i) => Value::Int(i),
+            crate::shared::ParserValue::Float(f) => Value::Float(f),
+            crate::shared::ParserValue::Color(c) => Value::Color(c),
+            crate::shared::ParserValue::Str(s) => Value::String(Rc::new(s)),
+            crate::shared::ParserValue::List(l) => {
                 Value::List(Rc::new(l.into_iter().map(Value::from).collect()))
             }
-            crate::shared::Value::Pair(l, r) => {
+            crate::shared::ParserValue::Pair(l, r) => {
                 Value::Pair(Rc::new((Value::from(*l), Value::from(*r))))
             }
-            crate::shared::Value::Spread(s) => {
+            crate::shared::ParserValue::Spread(s) => {
                 Value::Spread(Rc::new(s.into_iter().map(Value::from).collect()))
             }
-            crate::shared::Value::Special(id, a) => Value::Special(Rc::new((id, a))),
-            crate::shared::Value::Range(l, r) => Value::Range(l, r),
+            crate::shared::ParserValue::Special(id, a) => Value::Special(Rc::new((id, a))),
+            crate::shared::ParserValue::Range(l, r) => Value::Range(l, r),
         }
     }
 }
 
-impl From<&crate::shared::Value> for Value {
-    fn from(value: &crate::shared::Value) -> Self {
+impl From<&crate::shared::ParserValue> for Value {
+    fn from(value: &crate::shared::ParserValue) -> Self {
         match value {
-            crate::shared::Value::None => Value::None,
-            crate::shared::Value::Bool(b) => Value::Bool(*b),
-            crate::shared::Value::Int(i) => Value::Int(*i),
-            crate::shared::Value::Float(f) => Value::Float(*f),
-            crate::shared::Value::Color(c) => Value::Color(*c),
-            crate::shared::Value::Str(s) => Value::String(Rc::new(s.clone())),
-            crate::shared::Value::List(l) => {
+            crate::shared::ParserValue::None => Value::None,
+            crate::shared::ParserValue::Bool(b) => Value::Bool(*b),
+            crate::shared::ParserValue::Int(i) => Value::Int(*i),
+            crate::shared::ParserValue::Float(f) => Value::Float(*f),
+            crate::shared::ParserValue::Color(c) => Value::Color(*c),
+            crate::shared::ParserValue::Str(s) => Value::String(Rc::new(s.clone())),
+            crate::shared::ParserValue::List(l) => {
                 Value::List(Rc::new(l.iter().map(Value::from).collect()))
             }
-            crate::shared::Value::Pair(l, r) => {
+            crate::shared::ParserValue::Pair(l, r) => {
                 Value::Pair(Rc::new((Value::from(&**l), Value::from(&**r))))
             }
-            crate::shared::Value::Spread(s) => {
+            crate::shared::ParserValue::Spread(s) => {
                 Value::Spread(Rc::new(s.iter().map(Value::from).collect()))
             }
-            crate::shared::Value::Special(id, a) => Value::Special(Rc::new((id, *a))),
-            crate::shared::Value::Range(l, r) => Value::Range(*l, *r),
+            crate::shared::ParserValue::Special(id, a) => Value::Special(Rc::new((id, *a))),
+            crate::shared::ParserValue::Range(l, r) => Value::Range(*l, *r),
         }
     }
 }
@@ -238,6 +276,13 @@ impl Upvalue {
         match self {
             Upvalue::Open(l) => stack[*l].clone(),
             Upvalue::Closed(c) => c.clone(),
+        }
+    }
+
+    pub fn set(&mut self, stack: &mut [Value], value: Value) {
+        match self {
+            Upvalue::Open(l) => stack[*l] = value,
+            Upvalue::Closed(c) => *c = value,
         }
     }
 

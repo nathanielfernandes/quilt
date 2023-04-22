@@ -5,20 +5,20 @@ use crate::prelude::SourceCache;
 use super::{
     bytecode::{ByteCode, OpCode},
     chunk::Chunk,
-    compiler::VmEntry,
+    compiler::Script,
     value::{Function, Value},
 };
 
-pub struct Disassembler<'a> {
+pub struct Disassembler<'a, Data> {
     pub src: &'a SourceCache,
 
-    pub entry: &'a VmEntry,
+    pub entry: &'a Script<Data>,
 
     output: String,
 }
 
-impl<'a> Disassembler<'a> {
-    pub fn new(entry: &'a VmEntry, src: &'a SourceCache) -> Self {
+impl<'a, Data> Disassembler<'a, Data> {
+    pub fn new(entry: &'a Script<Data>, src: &'a SourceCache) -> Self {
         Self {
             src,
             entry,
@@ -134,7 +134,7 @@ impl<'a> Disassembler<'a> {
                 };
 
                 self.output.push_str(&format!(
-                    "\t{} ({})\n",
+                    "\t{: <3} ({})\n",
                     const_offset.to_string().green(),
                     constant,
                 ));
@@ -159,7 +159,7 @@ impl<'a> Disassembler<'a> {
                 };
 
                 self.output.push_str(&format!(
-                    "\t{} ({})\n",
+                    "\t{: <3} ({})\n",
                     local_offset.to_string().green(),
                     symbol.cyan(),
                 ));
@@ -181,7 +181,7 @@ impl<'a> Disassembler<'a> {
                     }
 
                     self.output.push_str(&format!(
-                        "\t{} ({})\n",
+                        "\t{: <3} ({})\n",
                         const_offset.to_string().green(),
                         header,
                     ));
@@ -204,6 +204,28 @@ impl<'a> Disassembler<'a> {
 
                 self.output
                     .push_str(&format!("\t{}\n", arg_count.to_string().green(),));
+            }
+
+            OpCode::CallBuiltin | OpCode::EnterContext => {
+                let builtin_offset = chunk.ops.read_u16(*offset);
+                *offset += 2;
+
+                let arg_count = chunk.ops.read_u8(*offset);
+                *offset += 1;
+
+                self.output.push_str(&format!(
+                    "\t{: <3} ({})\n",
+                    arg_count.to_string().green(),
+                    format!(
+                        "<builtin @{}>",
+                        self.entry
+                            .global_symbols
+                            .get(builtin_offset as usize)
+                            .cloned()
+                            .unwrap_or("unknown???".to_string()),
+                    )
+                    .cyan(),
+                ));
             }
 
             OpCode::JumpIfFalse | OpCode::Jump => {

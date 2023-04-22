@@ -321,6 +321,9 @@ impl Value {
             (Value::String(lhs), Value::Bool(rhs)) => {
                 Ok(Value::String(Rc::new(lhs.to_string() + &rhs.to_string())))
             }
+            (Value::String(lhs), Value::None) => {
+                Ok(Value::String(Rc::new(lhs.to_string() + "none")))
+            }
             (Value::Int(lhs), Value::String(rhs)) => {
                 Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
             }

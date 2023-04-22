@@ -1,6 +1,6 @@
 use crate::{
     frontend::{Expr, Op},
-    shared::{Spanned, Value},
+    shared::{ParserValue, Spanned},
 };
 
 use colored::Colorize;
@@ -57,41 +57,41 @@ impl Expr {
     pub fn to_string(&self, depth: usize, br_depth: usize) -> String {
         match &self {
             Expr::Literal(l) => match l {
-                Value::None => String::from("none").yellow().to_string(),
-                Value::Bool(b) => {
+                ParserValue::None => String::from("none").yellow().to_string(),
+                ParserValue::Bool(b) => {
                     if *b {
                         String::from("true").yellow().to_string()
                     } else {
                         String::from("false").yellow().to_string()
                     }
                 }
-                Value::Int(n) => n.to_string().yellow().to_string(),
-                Value::Float(n) => n.to_string().yellow().to_string(),
-                Value::Str(n) => format!("\"{}\"", n).green().to_string(),
-                Value::Color([r, g, b, a]) => {
+                ParserValue::Int(n) => n.to_string().yellow().to_string(),
+                ParserValue::Float(n) => n.to_string().yellow().to_string(),
+                ParserValue::Str(n) => format!("\"{}\"", n).green().to_string(),
+                ParserValue::Color([r, g, b, a]) => {
                     format!(
                         "{} {}",
                         format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a).cyan(),
                         format!("[{}, {}, {}, {}]", r, g, b, a).dimmed()
                     )
                 }
-                Value::List(_) => {
+                ParserValue::List(_) => {
                     format!("{}...{}", bracket("[", br_depth), bracket("]", br_depth))
                 }
-                Value::Pair(left, right) => format!(
+                ParserValue::Pair(left, right) => format!(
                     "{}{}, {}{}",
                     bracket("(", br_depth),
                     left.to_string(),
                     right.to_string(),
                     bracket(")", br_depth)
                 ),
-                Value::Spread(value) => {
+                ParserValue::Spread(value) => {
                     format!("{}{:?}", "...".purple(), value)
                 }
-                Value::Special(s, id) => {
+                ParserValue::Special(s, id) => {
                     format!("<special id={} value={}>", s, id)
                 }
-                Value::Range(start, end) => {
+                ParserValue::Range(start, end) => {
                     format!("{}{}{}", start, ":", end)
                 }
             },
@@ -133,7 +133,7 @@ impl Expr {
 
             //     s
             // }
-            Expr::Import(path) => {
+            Expr::Import(path, _) => {
                 format!("{} {}", "import".purple(), path.0.green().to_string())
             }
             Expr::Pair(left, right) => format!(

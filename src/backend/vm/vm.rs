@@ -3,16 +3,26 @@ use std::{collections::hash_map::Entry, rc::Rc};
 use arrayvec::ArrayVec;
 use fxhash::FxHashMap;
 
-use crate::prelude::{Error, ErrorS, NameError, OverflowError, TypeError};
+use crate::prelude::{
+    BuiltinFn, BuiltinFnMap, BuiltinFnReg, ContextExit, Error, ErrorS, NameError, OverflowError,
+    Span, Spanned, TypeError, VmData,
+};
 
 use super::{
     bytecode::*,
-    compiler::VmEntry,
+    compiler::Script,
     value::{Closure, Upvalue, Value},
 };
 
-pub struct VM<Data, const STACK_SIZE: usize, const CALL_STACK_SIZE: usize> {
+pub struct VM<const STACK_SIZE: usize = 1024, const CALL_STACK_SIZE: usize = 64, Data = ()>
+where
+    Data: VmData,
+{
     pub data: Data, // any data that the VM builtins needs to access
+
+    builtins: BuiltinFnMap<Data>,
+    exit_fn_stack: Vec<ContextExit<Data>>,
+    block_results: Vec<Value>,
 
     globals: FxHashMap<u16, Value>,
     global_symbols: Vec<String>,
@@ -26,23 +36,30 @@ pub struct VM<Data, const STACK_SIZE: usize, const CALL_STACK_SIZE: usize> {
     sp: usize,
 }
 
-impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
-    pub fn new(data: Data, entry: VmEntry) -> Self {
+impl<const SS: usize, const CSS: usize, Data> VM<SS, CSS, Data>
+where
+    Data: VmData,
+{
+    pub fn new(data: Data, script: Script<Data>) -> Self {
         Self {
             data,
 
+            builtins: script.builtins,
+            exit_fn_stack: Vec::with_capacity(256),
+            block_results: Vec::with_capacity(256),
+
             globals: FxHashMap::default(),
-            global_symbols: entry.global_symbols,
+            global_symbols: script.global_symbols,
 
             open_upvalues: Vec::with_capacity(256),
 
             frames: ArrayVec::new(),
             frame: {
                 CallFrame {
-                    closure: Rc::new(Closure {
-                        function: Rc::new(entry.function),
+                    closure: Closure {
+                        function: Rc::new(script.function),
                         upvalues: Vec::new(),
-                    }),
+                    },
                     ip: 0,
                     st: 0,
                 }
@@ -55,6 +72,10 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
             },
             sp: 0,
         }
+    }
+
+    pub fn finish(self) -> Data {
+        self.data
     }
 
     pub fn run(&mut self) -> Result<Value, ErrorS> {
@@ -78,7 +99,10 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                     // for i in self.frame.st..self.sp {
                     //     self.stack[i] = Value::None;
                     // }
+                    println!("sp: {}", self.sp);
                     self.sp = self.frame.st;
+
+                    self.data.on_exit_function();
 
                     match self.frames.pop() {
                         Some(frame) => {
@@ -88,6 +112,19 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                         None => {
                             return Ok(result);
                         }
+                    }
+                }
+
+                BlockResult => {
+                    let result = self.pop()?.clone();
+                    self.block_results.push(result);
+                }
+
+                BlockReturn => {
+                    if let Some(result) = self.block_results.pop() {
+                        self.push(result)?;
+                    } else {
+                        return Err(self.error(OverflowError::StackUnderflow.into()));
                     }
                 }
 
@@ -109,7 +146,6 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                 SetLocal => {
                     let idx = self.read_u16() as usize;
                     let value = self.peek(0)?;
-
                     self.stack[self.frame.st + idx] = value.clone();
                 }
 
@@ -169,6 +205,13 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                     }
                 }
 
+                SetUpvalue => {
+                    let idx = self.read_u16() as usize;
+                    let value = self.peek(0)?.clone();
+                    let upvalue = &mut self.frame.closure.upvalues[idx];
+                    upvalue.set(&mut self.stack, value);
+                }
+
                 LoadUpvalue => {
                     let idx = self.read_u16() as usize;
                     let upvalue = &self.frame.closure.upvalues[idx];
@@ -223,6 +266,112 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                     self.push(Value::Closure(Rc::new(closure)))?;
                 }
 
+                ExitContext => {
+                    if let Some(exit) = self.exit_fn_stack.pop() {
+                        exit(&mut self.data)?;
+                    } else {
+                        return Err(self.error(OverflowError::StackUnderflow.into()));
+                    }
+                }
+
+                EnterContext => {
+                    let builtin = self.read_u16();
+                    let argc = self.read_u8() as usize;
+
+                    match self.builtins.get(&builtin) {
+                        Some(builtin) => {
+                            let (entry, exit) = match builtin {
+                                BuiltinFn::Fn(builtin) => (builtin, None),
+                                BuiltinFn::Context(entry, exit) => (entry, Some(exit)),
+                            };
+
+                            let span = self
+                                .frame
+                                .closure
+                                .function
+                                .chunk
+                                .get_span(self.frame.ip - 1);
+
+                            let mut args = Vec::with_capacity(argc);
+                            args.resize(argc, (Value::None, span));
+
+                            for i in (0..argc).rev() {
+                                if self.sp == 0 {
+                                    return Err(self.error(OverflowError::StackUnderflow.into()));
+                                }
+                                self.sp -= 1;
+
+                                std::mem::swap(&mut self.stack[self.sp], &mut args[i].0)
+                            }
+
+                            if let Some(exit) = exit {
+                                self.exit_fn_stack.push(*exit);
+                            }
+
+                            let result = self.eval_builtin(*entry, args, span)?;
+
+                            self.push(result)?;
+                        }
+                        None => {
+                            let name = self
+                                .global_symbols
+                                .get(builtin as usize)
+                                .cloned()
+                                .unwrap_or(String::from("unkown???"));
+
+                            return Err(self.error_1(NameError::UndefinedBuiltin(name).into()));
+                        }
+                    }
+                }
+
+                CallBuiltin => {
+                    let builtin = self.read_u16();
+                    let argc = self.read_u8() as usize;
+
+                    match self.builtins.get(&builtin) {
+                        Some(builtin) => {
+                            let builtin =
+                                match builtin {
+                                    BuiltinFn::Fn(builtin) => builtin,
+                                    BuiltinFn::Context(_, _) => Err(self
+                                        .error(TypeError::NotCallable("context manager").into()))?,
+                                };
+
+                            let span = self
+                                .frame
+                                .closure
+                                .function
+                                .chunk
+                                .get_span(self.frame.ip - 1);
+
+                            let mut args = Vec::with_capacity(argc);
+                            args.resize(argc, (Value::None, span));
+
+                            for i in (0..argc).rev() {
+                                if self.sp == 0 {
+                                    return Err(self.error(OverflowError::StackUnderflow.into()));
+                                }
+                                self.sp -= 1;
+
+                                std::mem::swap(&mut self.stack[self.sp], &mut args[i].0)
+                            }
+
+                            let result = self.eval_builtin(*builtin, args, span)?;
+
+                            self.push(result)?;
+                        }
+                        None => {
+                            let name = self
+                                .global_symbols
+                                .get(builtin as usize)
+                                .cloned()
+                                .unwrap_or(String::from("unkown???"));
+
+                            return Err(self.error_1(NameError::UndefinedBuiltin(name).into()));
+                        }
+                    }
+                }
+
                 CallFunction => {
                     let argc = self.read_u8();
                     let value = self.peek(argc as usize)?;
@@ -245,7 +394,7 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                             }
 
                             let frame = CallFrame {
-                                closure: closure.clone(),
+                                closure: (**closure).clone(),
                                 ip: 0,
                                 st: self.sp - argc as usize - 1,
                             };
@@ -254,6 +403,8 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                                 self.frames
                                     .push_unchecked(std::mem::replace(&mut self.frame, frame))
                             }
+
+                            self.data.on_enter_function();
                         }
                         Value::Function(function) => {
                             if argc != function.arity {
@@ -273,7 +424,7 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                             };
 
                             let frame = CallFrame {
-                                closure: Rc::new(closure),
+                                closure,
                                 ip: 0,
                                 st: self.sp - argc as usize - 1,
                             };
@@ -282,6 +433,8 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
                                 self.frames
                                     .push_unchecked(std::mem::replace(&mut self.frame, frame))
                             }
+
+                            self.data.on_enter_function();
                         }
 
                         _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
@@ -431,6 +584,28 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
         Ok(Value::None)
     }
 
+    #[inline]
+    fn eval_builtin(
+        &mut self,
+        func: BuiltinFnReg<Data>,
+        args: Vec<Spanned<Value>>,
+        span: Span,
+    ) -> Result<Value, ErrorS> {
+        let (s, mut e) = (span.0, span.1);
+
+        for (_, aspan) in args.iter() {
+            e = e.max(aspan.1);
+        }
+
+        let result = (func)(
+            &mut self.data,
+            &mut (args, Span(s.saturating_sub(1), e.saturating_add(1), span.2)),
+        )
+        .map_err(|e| Into::<ErrorS>::into(e))?;
+
+        Ok(result)
+    }
+
     fn capture_upvalue(&mut self, location: usize) -> Upvalue {
         for upvalue in self.open_upvalues.iter_mut() {
             if let Upvalue::Open(loc) = upvalue {
@@ -483,6 +658,7 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
 
     #[inline]
     pub fn push(&mut self, value: Value) -> Result<(), ErrorS> {
+        // println!("-> {:?}", value);
         if self.sp > SS {
             return Err(self.error(OverflowError::StackOverflow.into()));
         }
@@ -502,8 +678,21 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
 
         // let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
         // let popped = self.stack[self.sp].clone();
-
+        // println!("<- {:?}", self.stack[self.sp]);
         Ok(&self.stack[self.sp])
+    }
+
+    #[inline]
+    pub fn pop_swap(&mut self) -> Result<Value, ErrorS> {
+        if self.sp == 0 {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+        self.sp -= 1;
+
+        let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
+        // let popped = self.stack[self.sp].clone();
+
+        Ok(popped)
     }
 
     #[inline]
@@ -956,7 +1145,7 @@ impl<Data, const SS: usize, const CSS: usize> VM<Data, SS, CSS> {
 }
 
 pub struct CallFrame {
-    pub closure: Rc<Closure>,
+    pub closure: Closure,
     pub ip: usize,
     pub st: usize,
 }

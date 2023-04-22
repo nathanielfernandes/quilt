@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use ariadne::{Color, Label, Report, ReportKind};
+use peg::error::ExpectedSet;
 
 use super::{Span, Spanned};
 use crate::prelude::{Op, SourceCache};
@@ -24,6 +25,15 @@ pub enum Error {
 
     #[error("TypeError: {0}")]
     TypeError(TypeError),
+
+    #[error("BuiltinError: {0}")]
+    BuiltinError(BuiltinError),
+
+    #[error("ImportError: {0}")]
+    ImportError(ImportError),
+
+    #[error("SyntaxError: {0}")]
+    SyntaxError(SyntaxError),
 }
 
 impl ErrorExt for ErrorS {
@@ -68,8 +78,12 @@ pub enum TypeError {
 pub enum NameError {
     #[error("name {0:?} is not defined")]
     Undefined(String),
+
     #[error("name {0:?} is already defined")]
     AlreadyDefined(String),
+
+    #[error("builtin {0:?} is not defined")]
+    UndefinedBuiltin(String),
 }
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
@@ -93,6 +107,28 @@ pub enum OverflowError {
     JumpTooLarge,
 }
 
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum ImportError {
+    #[error("unresolved import: {0:?}")]
+    UnresolvedImport(String),
+
+    #[error("could not resolve import: {0:?}")]
+    CouldNotResolve(String),
+
+    #[error("circular import: {0:?}")]
+    CircularImport(String),
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum SyntaxError {
+    #[error("unexpected token at line {line}, column {column}, expected one of {expected:?}")]
+    UnexpectedToken {
+        line: usize,
+        column: usize,
+        expected: ExpectedSet,
+    },
+}
+
 macro_rules! impl_from_error {
     ($($error:tt),+) => {$(
         impl From<$error> for Error {
@@ -103,7 +139,14 @@ macro_rules! impl_from_error {
     )+};
 }
 
-impl_from_error!(NameError, OverflowError, TypeError);
+impl_from_error!(
+    NameError,
+    OverflowError,
+    TypeError,
+    BuiltinError,
+    ImportError,
+    SyntaxError
+);
 
 /// A runtime error.
 /// ### Fields
@@ -111,22 +154,16 @@ impl_from_error!(NameError, OverflowError, TypeError);
 /// - `help`: An optional help message.
 /// - `span`: The span of the error.
 /// - `color`: The color of the error message.
-#[derive(Debug, Clone)]
-pub struct RuntimeError {
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub struct BuiltinError {
     pub msg: String,
     pub help: Option<String>,
     pub span: Span,
-    pub color: Option<ariadne::Color>,
 }
 
-impl RuntimeError {
+impl BuiltinError {
     pub fn help(mut self, help: String) -> Self {
         self.help = Some(help);
-        self
-    }
-
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
         self
     }
 
@@ -140,7 +177,7 @@ impl RuntimeError {
         let mut report = Report::build(ReportKind::Error, self.span.2, self.span.0).with_label(
             Label::new(self.span)
                 .with_message(self.msg)
-                .with_color(self.color.unwrap_or(Color::Red)),
+                .with_color(Color::Red),
         );
 
         if let Some(help) = &self.help {
@@ -172,10 +209,15 @@ impl RuntimeError {
     }
 }
 
-impl std::fmt::Display for RuntimeError {
+impl From<BuiltinError> for ErrorS {
+    fn from(e: BuiltinError) -> Self {
+        let span = e.span;
+        (Error::BuiltinError(e), span)
+    }
+}
+
+impl std::fmt::Display for BuiltinError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.msg)
     }
 }
-
-impl std::error::Error for RuntimeError {}

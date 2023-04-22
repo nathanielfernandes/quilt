@@ -86,7 +86,7 @@ impl SourceCache {
         name: &str,
         src: &str,
         resolver: &mut R,
-    ) -> Result<AST, Spanned<String>> {
+    ) -> Result<AST, ErrorS> {
         let id = self.add(name.to_string(), src);
 
         match parse_code(src, id) {
@@ -96,14 +96,16 @@ impl SourceCache {
             }
             Err(e) => {
                 let line = e.location.line;
-                let col = e.location.column;
+                let column = e.location.column;
                 let offset = e.location.offset;
 
                 Err((
-                    format!(
-                        "Parse error at line {}, column {}: expected {}",
-                        line, col, e.expected
-                    ),
+                    SyntaxError::UnexpectedToken {
+                        line,
+                        column,
+                        expected: e.expected,
+                    }
+                    .into(),
                     Span(offset, offset, id),
                 ))
             }
@@ -114,13 +116,13 @@ impl SourceCache {
         &mut self,
         ast: &mut AST,
         resolver: &mut R,
-    ) -> Result<(), Spanned<String>> {
+    ) -> Result<(), ErrorS> {
         for (expr, _) in ast.iter_mut() {
             match expr {
-                Expr::Import((path, span)) => {
+                Expr::Import((path, span), body) => {
                     if self.resolved.contains(path) {
                         Err((
-                            format!("Duplicate or Circular import: {}", path),
+                            ImportError::CircularImport(path.clone()).into(),
                             span.clone(),
                         ))?;
                     }
@@ -131,7 +133,7 @@ impl SourceCache {
 
                     self.resolve_imports(&mut imported_ast, resolver)?;
 
-                    *expr = Expr::Block(imported_ast);
+                    *body = Some(imported_ast);
                 }
                 _ => {}
             }

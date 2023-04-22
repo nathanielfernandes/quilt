@@ -1,4 +1,4 @@
-use crate::shared::{Span, Spanned, Value};
+use crate::shared::{ParserValue, Span, Spanned};
 
 /// A type that represents an expression in Quilt
 /// ### Variants
@@ -24,7 +24,7 @@ use crate::shared::{Span, Spanned, Value};
 /// * `Import`: An import, holds the name of the module as a [`String`]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Literal(Value),
+    Literal(ParserValue),
     List(Vec<Spanned<Expr>>),
     Pair(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 
@@ -60,7 +60,7 @@ pub enum Expr {
     ForLoop(Spanned<String>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
     MultiForLoop(Vec<Spanned<String>>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
 
-    Import(Spanned<String>),
+    Import(Spanned<String>, Option<Vec<Spanned<Expr>>>),
 }
 
 /// A type that represents an operator in Quilt
@@ -169,16 +169,16 @@ peg::parser!(
         / "\\u{" value:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) "}" { char::from_u32(u32::from_str_radix(value, 16).unwrap()).unwrap() }
         / expected!("valid escape sequence")
 
-        pub rule literal() -> Value
-        = KW("true") { Value::Bool(true) }
-        / KW("false") { Value::Bool(false) }
-        / KW("none") { Value::None }
-        / h:HEX() { Value::Color(h) }
-        / f:FLOAT() { Value::Float(f) }
+        pub rule literal() -> ParserValue
+        = KW("true") { ParserValue::Bool(true) }
+        / KW("false") { ParserValue::Bool(false) }
+        / KW("none") { ParserValue::None }
+        / h:HEX() { ParserValue::Color(h) }
+        / f:FLOAT() { ParserValue::Float(f) }
         // / s:INT() _ ":" _ e:INT() { Value::Range(s, e) }
-        / i:INT() { Value::Int(i) }
-        / s:STRING() { Value::Str(s) }
-        / "[" _ e:COMMASEP(<literal()>) _ "]" { Value::List(e) }
+        / i:INT() { ParserValue::Int(i) }
+        / s:STRING() { ParserValue::Str(s) }
+        / "[" _ e:COMMASEP(<literal()>) _ "]" { ParserValue::List(e) }
 
         rule expr() -> Spanned<Expr>
         = precedence! {
@@ -190,8 +190,6 @@ peg::parser!(
             i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Assignment(i, Box::new(e)) }
             --
             KW("fn") _ i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ start:position!() body:block() end:position!(){
-                let mut body = body;
-                fix_return((&mut body, Span(start, end, src_id)));
                 Expr::Function(i, args, body)
             }
             --
@@ -204,7 +202,7 @@ peg::parser!(
             --
             KW("with") _ "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" n:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block() { Expr::ContextWrapped(i, args, n, body) }
             --
-            KW("import") _ s:spanned(<STRING()>) { Expr::Import(s) }
+            KW("import") _ s:spanned(<STRING()>) { Expr::Import(s, None) }
             --
             x:(@) _ ":" _ y:@ { Expr::Range(Box::new(x), Box::new(y)) }
             --
@@ -236,7 +234,7 @@ peg::parser!(
             "..." _ e:@ { Expr::Unary(Op::Spread, Box::new(e)) }
             "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::List(e) }
             "(" _ l:expr() _ "," _ r:expr() _ ")" { Expr::Pair(Box::new(l), Box::new(r)) }
-            "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(Value::Pair(Box::new(l), Box::new(r))) }
+            "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(ParserValue::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::BuiltinCall(i, args) }
             i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::Call(i, args) }
             "$" i:IDENT() { Expr::Yoink(i) }
@@ -246,7 +244,12 @@ peg::parser!(
         }
 
         rule block() -> Vec<Spanned<Expr>>
-        = "{" _ code:(x:parse() ** (";"/"\n"/_)) _ "}" {code}
+        = s:position!() "{" _  code:(x:parse() ** (";"/"\n"/_)) _ "}" e:position!() {
+            let mut code = code;
+            fix_return((&mut code, Span(s, e, src_id)));
+            code
+        
+        }
 
         rule parse() -> Spanned<Expr>
         = _ e:expr() _ { e }
@@ -289,7 +292,7 @@ fn hex_to_rgba(hex: &str) -> Option<[u8; 4]> {
 
 pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
     if body.is_empty() {
-        body.push((Expr::Literal(Value::None), span));
+        body.push((Expr::Literal(ParserValue::None), span));
     } else {
         let last = body.last_mut().expect("body is not empty");
         let span = last.1.clone();
@@ -307,14 +310,18 @@ pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
             Expr::MultiForLoop(_, _, body) => fix_return((body, span)),
 
             Expr::Declaration(_, _)
-            | Expr::Assignment(_, _)
+            // | Expr::Assignment(_, _)
             | Expr::MultiDeclaration(_, _)
             | Expr::Function(_, _, _)
-            | Expr::Import(_) => {
-                body.push((Expr::Literal(Value::None), span));
+            // | Expr::Import(_, _)
+            
+             => {
+                body.push((Expr::Literal(ParserValue::None), span));
             }
 
-            _ => {}
+            _ => {
+
+            }
         }
     }
 }
