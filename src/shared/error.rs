@@ -15,6 +15,10 @@ pub trait ErrorExt {
     fn print(&self, sources: SourceCache) -> std::io::Result<()>;
 }
 
+pub trait NamedError {
+    fn name(&self) -> &'static str;
+}
+
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum Error {
     #[error("NameError: {0}")]
@@ -44,7 +48,9 @@ impl ErrorExt for ErrorS {
         let (error, span) = &self;
         let msg = error.to_string();
 
-        let report = Report::build(ReportKind::Error, span.2, span.0)
+        let kind = ReportKind::Custom(error.name(), Color::Red);
+
+        let report = Report::build(kind, span.2, span.0)
             .with_label(Label::new(*span).with_message(msg).with_color(Color::Red));
 
         report.finish()
@@ -52,6 +58,20 @@ impl ErrorExt for ErrorS {
 
     fn print(&self, sources: SourceCache) -> std::io::Result<()> {
         self.report().print(sources)
+    }
+}
+
+impl NamedError for Error {
+    fn name(&self) -> &'static str {
+        match &self {
+            Error::NameError(e) => e.name(),
+            Error::OverflowError(e) => e.name(),
+            Error::TypeError(e) => e.name(),
+            Error::BuiltinError(e) => e.name(),
+            Error::ImportError(e) => e.name(),
+            Error::SyntaxError(e) => e.name(),
+            Error::CompileError(e) => e.name(),
+        }
     }
 }
 
@@ -83,6 +103,20 @@ pub enum TypeError {
     UnsupportedUnaryOperation { op: Op, rhs: ValueType },
 }
 
+impl NamedError for TypeError {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Expected(_, _) => "Expected",
+            Self::MismatchedArity { .. } => "MismatchedArity",
+            Self::NotCallable(_) => "NotCallable",
+            Self::UnsupportedBinaryOperation { .. } => "UnsupportedBinaryOperation",
+            Self::Unpackable(_) => "Unpackable",
+            Self::InsufficientValues(_, _) => "InsufficientValues",
+            Self::UnsupportedUnaryOperation { .. } => "UnsupportedUnaryOperation",
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum NameError {
     #[error("name {0:?} is not defined")]
@@ -93,6 +127,16 @@ pub enum NameError {
 
     #[error("builtin {0:?} is not defined")]
     UndefinedBuiltin(String),
+}
+
+impl NamedError for NameError {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Undefined(_) => "Undefined",
+            Self::AlreadyDefined(_) => "AlreadyDefined",
+            Self::UndefinedBuiltin(_) => "UndefinedBuiltin",
+        }
+    }
 }
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
@@ -119,8 +163,25 @@ pub enum OverflowError {
     JumpTooLarge,
 }
 
+impl NamedError for OverflowError {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::TooManyParams => "TooManyParams",
+            Self::TooManyArgs => "TooManyArgs",
+            Self::TooMuchToUnpack => "TooMuchToUnpack",
+            Self::StackOverflow => "StackOverflow",
+            Self::StackUnderflow => "StackUnderflow",
+            Self::InstructionOverflow => "InstructionOverflow",
+            Self::JumpTooLarge => "JumpTooLarge",
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum ImportError {
+    #[error("imports can only be at the top level of a file")]
+    ImportNotTopLevel,
+
     #[error("unresolved import: {0:?}")]
     UnresolvedImport(String),
 
@@ -129,6 +190,17 @@ pub enum ImportError {
 
     #[error("circular import: {0:?}")]
     CircularImport(String),
+}
+
+impl NamedError for ImportError {
+    fn name(&self) -> &'static str {
+        match self {
+            ImportError::ImportNotTopLevel => "ImportNotTopLevel",
+            ImportError::UnresolvedImport(_) => "UnresolvedImport",
+            ImportError::CouldNotResolve(_) => "CouldNotResolve",
+            ImportError::CircularImport(_) => "CircularImport",
+        }
+    }
 }
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
@@ -141,10 +213,29 @@ pub enum SyntaxError {
     },
 }
 
+impl NamedError for SyntaxError {
+    fn name(&self) -> &'static str {
+        match self {
+            SyntaxError::UnexpectedToken { .. } => "UnexpectedToken",
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum CompileError {
-    #[error("functions can only be defined at the top level")]
-    NestedFunction(String),
+    // #[error("functions can only be defined at the top level")]
+    // NestedFunction(String),
+    #[error("statements cannot be used as expressions")]
+    StatementAsExpression,
+}
+
+impl NamedError for CompileError {
+    fn name(&self) -> &'static str {
+        match self {
+            // CompileError::NestedFunction(_) => "NestedFunction",
+            CompileError::StatementAsExpression => "StatementAsExpression",
+        }
+    }
 }
 
 macro_rules! impl_from_error {
@@ -225,6 +316,12 @@ impl BuiltinError {
                 "Could not convert to string",
             ))
         }
+    }
+}
+
+impl NamedError for BuiltinError {
+    fn name(&self) -> &'static str {
+        "BuiltinError"
     }
 }
 

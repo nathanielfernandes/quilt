@@ -107,6 +107,10 @@ where
                     let result = self.pop()?.clone();
                     self.close_upvalues(self.frame.st);
 
+                    for idx in self.frame.st..self.sp {
+                        self.close_upvalues(idx);
+                    }
+
                     // clean up stack
                     // for i in self.frame.st..self.sp {
                     //     self.stack[i] = Value::None;
@@ -674,6 +678,7 @@ where
         upvalue
     }
 
+    #[inline]
     fn close_upvalues(&mut self, last: usize) {
         if last >= self.stack.len() {
             return;

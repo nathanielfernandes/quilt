@@ -3,7 +3,8 @@ use std::rc::Rc;
 use crate::{
     backend::utils::pool::Pool,
     prelude::{
-        BuiltinFnMap, BuiltinListFn, ErrorS, Expr, ImportError, Op, OverflowError, Span, Spanned,
+        BuiltinFnMap, BuiltinListFn, CompileError, ErrorS, Expr, ImportError, Op, OverflowError,
+        Span, Spanned,
     },
 };
 
@@ -166,12 +167,13 @@ impl<Data> Compiler<Data> {
             for op in ops.into_iter() {
                 self.write_op(op, *span);
             }
+
             self.write_op(OpCode::BlockReturn, *span);
         }
     }
 
     pub fn compile(mut self, ast: &Vec<Spanned<Expr>>) -> Result<Script<Data>, ErrorS> {
-        self.compile_exprs(ast)?;
+        self.compile_stmnts(ast)?;
 
         Ok(Script {
             global_symbols: self.global_symbols.take(),
@@ -180,21 +182,22 @@ impl<Data> Compiler<Data> {
         })
     }
 
-    fn compile_exprs(&mut self, exprs: &Vec<Spanned<Expr>>) -> Result<Span, ErrorS> {
+    fn compile_stmnts(&mut self, exprs: &Vec<Spanned<Expr>>) -> Result<Span, ErrorS> {
         let mut span = Span::default();
+
         if exprs.len() == 0 {
             return Ok(span);
         }
 
         for i in 0..exprs.len() - 1 {
             let expr = &exprs[i];
-            self.compile_expr(expr, true)?;
+            self.compile_stmnt(expr, true)?;
 
             span = expr.1;
         }
 
         if let Some(expr) = exprs.last() {
-            self.compile_expr(expr, false)?;
+            self.compile_stmnt(expr, false)?;
 
             span = expr.1;
         }
@@ -202,199 +205,21 @@ impl<Data> Compiler<Data> {
         Ok(span)
     }
 
-    fn compile_block_inner<'a>(
-        &mut self,
-        exprs: &'a Vec<Spanned<Expr>>,
-        span: &'a Span,
-    ) -> Result<&'a Span, ErrorS> {
-        if exprs.len() == 0 {
-            return Ok(span);
-        }
-
-        let mut span = span;
-        for i in 0..exprs.len() - 1 {
-            let expr = &exprs[i];
-            self.compile_expr(expr, true)?;
-            span = &expr.1;
-        }
-
-        if let Some(expr) = exprs.last() {
-            self.compile_expr(expr, false)?;
-            span = &expr.1;
-        }
-
-        Ok(span)
-    }
-
-    fn compile_block(&mut self, exprs: &Vec<Spanned<Expr>>, span: &Span) -> Result<(), ErrorS> {
+    fn compile_block(&mut self, exprs: &Vec<Spanned<Expr>>) -> Result<(), ErrorS> {
         self.enter_scope();
-        let span = self.compile_block_inner(exprs, span)?;
-        self.exit_scope(span);
+        let span = self.compile_stmnts(exprs)?;
+        self.exit_scope(&span);
         Ok(())
     }
 
-    fn if_pop(&mut self, pop: bool, span: Span) {
-        if pop {
-            self.write_op(OpCode::Pop, span)
-        }
-    }
-
-    fn compile_expr(&mut self, (expr, span): &Spanned<Expr>, pop: bool) -> Result<(), ErrorS> {
-        match expr {
-            Expr::Literal(value) => {
-                let offset = self.add_constant(value.into());
-                self.write_op_u16(OpCode::LoadConst, offset, *span);
-
-                self.if_pop(pop, *span);
-            }
-
-            Expr::Pair(left, right) => {
-                self.compile_expr(left, false)?;
-                self.compile_expr(right, false)?;
-
-                self.write_op(OpCode::CreatePair, *span);
-
-                self.if_pop(pop, *span);
-            }
-
-            Expr::Ident(name) => {
-                self.get_variable(name, *span);
-                self.if_pop(pop, *span);
-            }
-
-            Expr::Block(exprs) => {
-                self.compile_block(exprs, span)?;
-                self.if_pop(pop, *span);
-            }
-
-            Expr::Import((name, span), body) => match body {
-                Some(body) => {
-                    self.compile_exprs(body)?;
-                }
-                None => {
-                    return Err((
-                        ImportError::UnresolvedImport(name.to_string()).into(),
-                        *span,
-                    ))
-                }
-            },
-
-            Expr::Declaration((name, span), value) => {
-                if self.is_global() {
-                    self.compile_expr(value, false)?;
-                    let offset = self.add_global_symbol(name.to_string());
-                    self.write_op_u16(OpCode::DefineGlobal, offset, *span);
-                } else {
-                    self.compile_expr(value, false)?;
-                    self.define_local(name, *span)?;
-                    self.set_variable(name, *span);
-                }
-            }
-
-            Expr::MultiDeclaration(names, value) => {
-                self.compile_expr(value, false)?;
-
-                let arity: u8 = names
-                    .len()
-                    .try_into()
-                    .map_err(|_| (OverflowError::TooMuchToUnpack.into(), *span))?;
-
-                self.write_op_u8(OpCode::Unpack, arity, *span);
-
-                for (name, span) in names {
-                    if self.is_global() {
-                        let offset = self.add_global_symbol(name.to_string());
-                        self.write_op_u16(OpCode::DefineGlobal, offset, *span);
-                    } else {
-                        self.define_local(name, *span)?;
-                        self.set_variable(name, *span);
-                    }
-                }
-            }
-
-            Expr::Assignment((name, span), value) => {
-                self.compile_expr(value, false)?;
-                self.set_variable(name, *span);
-                self.if_pop(pop, *span);
-            }
-
-            Expr::Call((name, c_span), args) => {
-                let arity: u8 = args
-                    .len()
-                    .try_into()
-                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
-
-                self.get_variable(name, *c_span);
-
-                for arg in args {
-                    self.compile_expr(arg, false)?;
-                }
-
-                self.write_op_u8(OpCode::CallFunction, arity, *span);
-                self.if_pop(pop, *span);
-            }
-
-            Expr::BuiltinCall((name, c_span), args) => {
-                let arity: u8 = args
-                    .len()
-                    .try_into()
-                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
-
-                for arg in args {
-                    self.compile_expr(arg, false)?;
-                }
-
-                self.write_op(OpCode::CallBuiltin, *span);
-
-                let name = self.add_global_symbol(name.to_string());
-                self.write_u16(name, *span);
-                self.write_u8(arity, *c_span);
-                self.if_pop(pop, *span);
-            }
-
-            Expr::ContextWrapped((name, c_span), args, varname, body) => {
-                let arity: u8 = args
-                    .len()
-                    .try_into()
-                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
-
-                for arg in args {
-                    self.compile_expr(arg, false)?;
-                }
-
-                self.write_op(OpCode::EnterContext, *span);
-
-                let name = self.add_global_symbol(name.to_string());
-                self.write_u16(name, *span);
-                self.write_u8(arity, *c_span);
-
-                self.enter_scope();
-
-                if let Some((varname, span)) = varname {
-                    self.define_local(varname, *span)?;
-                    self.set_variable(varname, *span);
-                }
-
-                self.compile_exprs(body)?;
-
-                self.exit_scope(span);
-
-                self.write_op(OpCode::ExitContext, *span);
-                self.if_pop(pop, *span);
-            }
-
+    fn compile_stmnt(&mut self, stmnt: &Spanned<Expr>, pop: bool) -> Result<(), ErrorS> {
+        let span = stmnt.1;
+        match &stmnt.0 {
             Expr::Function((name, fn_span), arguments, body) => {
-                // if self.level.scope_depth != 0 {
-                //     return Err((
-                //         CompileError::NestedFunction(name.to_string()).into(),
-                //         *fn_span,
-                //     ));
-                // }
-
                 let arity: u8 = arguments
                     .len()
                     .try_into()
-                    .map_err(|_| (OverflowError::TooManyParams.into(), *span))?;
+                    .map_err(|_| (OverflowError::TooManyParams.into(), span))?;
 
                 let level = Level {
                     function: Function {
@@ -414,49 +239,207 @@ impl<Data> Compiler<Data> {
                 self.enter_level(level);
                 self.enter_scope();
 
-                self.define_local(name, *fn_span)?;
+                self.define_local(&name, *fn_span)?;
                 // self.set_variable(name, *span);
 
                 for (name, span) in arguments {
-                    self.define_local(name, *span)?;
+                    self.define_local(&name, *span)?;
                 }
 
-                self.compile_exprs(body)?;
-                self.exit_scope(span);
+                self.compile_stmnts(&body)?;
+                // self.exit_scope(&span);
 
                 let (function, upvalues) = self.exit_level();
 
                 let value = Value::Function(Rc::new(function));
                 let offset = self.add_constant(value);
                 if upvalues.len() > 0 {
-                    self.write_op_u16(OpCode::CreateClosure, offset, *span);
+                    self.write_op_u16(OpCode::CreateClosure, offset, span);
                     for Upvalue(idx, is_local) in upvalues {
-                        self.write_u8(is_local.into(), *span);
-                        self.write_u16(idx, *span);
+                        self.write_u8(is_local.into(), span);
+                        self.write_u16(idx, span);
                     }
                 } else {
-                    self.write_op_u16(OpCode::CreateFunction, offset, *span);
+                    self.write_op_u16(OpCode::CreateFunction, offset, span);
                 }
 
                 // function compiled at this point
                 if self.is_global() {
                     let offset = self.add_global_symbol(name.to_string());
+                    self.write_op_u16(OpCode::DefineGlobal, offset, span);
+                } else {
+                    self.define_local(&name, span)?;
+                    self.set_variable(&name, span);
+                }
+            }
+            Expr::Declaration((name, span), value) => {
+                self.compile_expr(&value)?;
+                if self.is_global() {
+                    let offset = self.add_global_symbol(name.to_string());
                     self.write_op_u16(OpCode::DefineGlobal, offset, *span);
                 } else {
-                    self.define_local(name, *span)?;
-                    self.set_variable(name, *span);
+                    self.define_local(&name, *span)?;
+                    self.set_variable(&name, *span);
+                }
+            }
+            Expr::MultiDeclaration(names, value) => {
+                self.compile_expr(&value)?;
+
+                let arity: u8 = names
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooMuchToUnpack.into(), span))?;
+
+                self.write_op_u8(OpCode::Unpack, arity, span);
+
+                for (name, span) in names {
+                    if self.is_global() {
+                        let offset = self.add_global_symbol(name.to_string());
+                        self.write_op_u16(OpCode::DefineGlobal, offset, *span);
+                    } else {
+                        self.define_local(&name, *span)?;
+                        self.set_variable(&name, *span);
+                    }
+                }
+            }
+            Expr::Import((name, span), body) => {
+                if self.level.scope_depth > 0 {
+                    return Err((ImportError::ImportNotTopLevel.into(), *span));
+                }
+
+                match body {
+                    Some(body) => {
+                        for stmnt in body {
+                            self.compile_stmnt(stmnt, true)?;
+                        }
+                    }
+                    None => {
+                        return Err((
+                            ImportError::UnresolvedImport(name.to_string()).into(),
+                            *span,
+                        ))
+                    }
                 }
             }
 
+            _ => {
+                self.compile_expr(stmnt)?;
+                if pop {
+                    self.write_op(OpCode::Pop, stmnt.1);
+                }
+            } // Expr::ForLoop(_, _, _) => {}
+              // Expr::MultiForLoop(_, _, _) => {}
+        }
+
+        Ok(())
+    }
+
+    fn compile_expr(&mut self, (expr, span): &Spanned<Expr>) -> Result<(), ErrorS> {
+        match expr {
+            Expr::Literal(value) => {
+                let offset = self.add_constant(value.into());
+                self.write_op_u16(OpCode::LoadConst, offset, *span);
+
+                // self.if_pop(pop, *span);
+            }
+
+            Expr::Pair(left, right) => {
+                self.compile_expr(left)?;
+                self.compile_expr(right)?;
+
+                self.write_op(OpCode::CreatePair, *span);
+
+                // self.if_pop(pop, *span);
+            }
+
+            Expr::Ident(name) => {
+                self.get_variable(name, *span);
+                // self.if_pop(pop, *span);
+            }
+
+            Expr::Block(exprs) => {
+                self.compile_block(exprs)?;
+                // self.if_pop(pop, *span);
+            }
+
+            Expr::Assignment((name, span), value) => {
+                self.compile_expr(value)?;
+                self.set_variable(name, *span);
+            }
+
+            Expr::Call((name, c_span), args) => {
+                let arity: u8 = args
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
+
+                self.get_variable(name, *c_span);
+
+                for arg in args {
+                    self.compile_expr(arg)?;
+                }
+
+                self.write_op_u8(OpCode::CallFunction, arity, *span);
+                // self.if_pop(pop, *span);
+            }
+
+            Expr::BuiltinCall((name, c_span), args) => {
+                let arity: u8 = args
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
+
+                for arg in args {
+                    self.compile_expr(arg)?;
+                }
+
+                self.write_op(OpCode::CallBuiltin, *span);
+
+                let name = self.add_global_symbol(name.to_string());
+                self.write_u16(name, *span);
+                self.write_u8(arity, *c_span);
+                // self.if_pop(pop, *span);
+            }
+
+            Expr::ContextWrapped((name, c_span), args, varname, body) => {
+                let arity: u8 = args
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
+
+                for arg in args {
+                    self.compile_expr(arg)?;
+                }
+
+                self.write_op(OpCode::EnterContext, *span);
+
+                let name = self.add_global_symbol(name.to_string());
+                self.write_u16(name, *span);
+                self.write_u8(arity, *c_span);
+
+                self.enter_scope();
+
+                if let Some((varname, span)) = varname {
+                    self.define_local(varname, *span)?;
+                    self.set_variable(varname, *span);
+                }
+
+                self.compile_stmnts(body)?;
+
+                self.exit_scope(span);
+                self.write_op(OpCode::ExitContext, *span);
+                // self.if_pop(pop, *span);
+            }
+
             Expr::Conditional(condition, then, otherwise) => {
-                self.compile_expr(condition, false)?;
+                self.compile_expr(condition)?;
 
                 // if the condition is false, go to else
                 let else_jump = self.write_jump(OpCode::JumpIfFalse, *span);
                 // pop off condition
                 self.write_op(OpCode::Pop, *span);
 
-                self.compile_block(then, span)?;
+                self.compile_block(then)?;
 
                 let end_jump = self.write_jump(OpCode::Jump, *span);
 
@@ -466,16 +449,16 @@ impl<Data> Compiler<Data> {
                 self.write_op(OpCode::Pop, *span);
 
                 if let Some(otherwise) = otherwise {
-                    self.compile_block(otherwise, span)?;
+                    self.compile_block(otherwise)?;
                 }
 
                 self.patch_jump(end_jump, *span)?;
-                self.if_pop(pop, *span);
+                // self.if_pop(pop, *span);
             }
 
             Expr::Binary(operand, lhs, rhs) => {
-                self.compile_expr(lhs, false)?;
-                self.compile_expr(rhs, false)?;
+                self.compile_expr(lhs)?;
+                self.compile_expr(rhs)?;
 
                 let opcode = match operand {
                     Op::Add => OpCode::BinaryAdd,
@@ -498,11 +481,11 @@ impl<Data> Compiler<Data> {
                 };
 
                 self.write_op(opcode, *span);
-                self.if_pop(pop, *span);
+                // self.if_pop(pop, *span);
             }
 
             Expr::Unary(operand, rhs) => {
-                self.compile_expr(rhs, false)?;
+                self.compile_expr(rhs)?;
 
                 let opcode = match operand {
                     Op::Not => OpCode::UnaryNot,
@@ -512,10 +495,10 @@ impl<Data> Compiler<Data> {
                 };
 
                 self.write_op(opcode, *span);
-                self.if_pop(pop, *span);
+                // self.if_pop(pop, *span);
             }
 
-            _ => todo!("compile_expr: {:?}", expr),
+            _ => Err((CompileError::StatementAsExpression.into(), *span))?,
         }
 
         // if pop
