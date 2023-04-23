@@ -58,7 +58,7 @@ where
                 CallFrame {
                     closure: Closure {
                         function: Rc::new(script.function),
-                        upvalues: Vec::new(),
+                        upvalues: Rc::new(Vec::new()),
                     },
                     ip: 0,
                     st: 0,
@@ -225,7 +225,7 @@ where
                 SetUpvalue => {
                     let idx = self.read_u16() as usize;
                     let value = self.peek(0)?.clone();
-                    let upvalue = &mut self.frame.closure.upvalues[idx];
+                    let upvalue = &self.frame.closure.upvalues[idx];
                     {
                         upvalue.borrow_mut().set(&mut self.stack, value);
                     }
@@ -289,7 +289,7 @@ where
 
                     let closure = Closure {
                         function,
-                        upvalues: Vec::new(),
+                        upvalues: Rc::new(Vec::new()),
                     };
 
                     self.push(Value::Closure(closure.into()))?;
@@ -317,7 +317,10 @@ where
                         upvalues.push(upvalue);
                     }
 
-                    let closure = Closure { function, upvalues };
+                    let closure = Closure {
+                        function,
+                        upvalues: Rc::new(upvalues),
+                    };
                     self.push(Value::Closure(Rc::new(closure)))?;
                 }
 
@@ -475,7 +478,7 @@ where
 
                             let closure = Closure {
                                 function: function.clone(),
-                                upvalues: Vec::new(),
+                                upvalues: Rc::new(Vec::new()),
                             };
 
                             let frame = CallFrame {

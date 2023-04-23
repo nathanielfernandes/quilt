@@ -239,7 +239,7 @@ impl NamedError for CompileError {
 }
 
 macro_rules! impl_from_error {
-    ($($error:tt),+) => {$(
+    ($($error:ident),+) => {$(
         impl From<$error> for Error {
             fn from(e: $error) -> Self {
                 Error::$error(e)
