@@ -34,6 +34,9 @@ pub enum Error {
 
     #[error("SyntaxError: {0}")]
     SyntaxError(SyntaxError),
+
+    #[error("CompileError: {0}")]
+    CompileError(CompileError),
 }
 
 impl ErrorExt for ErrorS {
@@ -70,6 +73,12 @@ pub enum TypeError {
         rhs: ValueType,
     },
 
+    #[error("cannot unpack `{0}`")]
+    Unpackable(ValueType),
+
+    #[error("cannot unpack a {0} item value into {1} values")]
+    InsufficientValues(usize, u8),
+
     #[error("unsupported unary operation `{op}` on `{rhs}`")]
     UnsupportedUnaryOperation { op: Op, rhs: ValueType },
 }
@@ -93,6 +102,9 @@ pub enum OverflowError {
 
     #[error("cannot use more than 256 arguments in a function call")]
     TooManyArgs,
+
+    #[error("cannot unpack more than 256 values")]
+    TooMuchToUnpack,
 
     #[error("stack overflow")]
     StackOverflow,
@@ -129,6 +141,12 @@ pub enum SyntaxError {
     },
 }
 
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum CompileError {
+    #[error("functions can only be defined at the top level")]
+    NestedFunction(String),
+}
+
 macro_rules! impl_from_error {
     ($($error:tt),+) => {$(
         impl From<$error> for Error {
@@ -145,7 +163,8 @@ impl_from_error!(
     TypeError,
     BuiltinError,
     ImportError,
-    SyntaxError
+    SyntaxError,
+    CompileError
 );
 
 /// A runtime error.

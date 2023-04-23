@@ -29,6 +29,7 @@ gen_bytecode!(
     CloseUpvalue,
     CreateFunction,
     CreateClosure,
+    CreatePair,
     CallFunction, // u8
     CallBuiltin,  // u16, u8
     EnterContext, // u16, u8
@@ -37,6 +38,7 @@ gen_bytecode!(
     BlockReturn,
     JumpIfFalse, // u16
     Jump,        // u16
+    Unpack,      // u8
     UnaryNegate,
     UnaryNot,
     UnarySpread,

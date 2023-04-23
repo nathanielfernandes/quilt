@@ -178,6 +178,7 @@ peg::parser!(
         // / s:INT() _ ":" _ e:INT() { Value::Range(s, e) }
         / i:INT() { ParserValue::Int(i) }
         / s:STRING() { ParserValue::Str(s) }
+        / "(" _ h:literal() _ "," _ t:literal() _ ")" { ParserValue::Pair(Box::new(h), Box::new(t)) }
         / "[" _ e:COMMASEP(<literal()>) _ "]" { ParserValue::List(e) }
 
         rule expr() -> Spanned<Expr>
@@ -310,7 +311,7 @@ pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
             Expr::MultiForLoop(_, _, body) => fix_return((body, span)),
 
             Expr::Declaration(_, _)
-            // | Expr::Assignment(_, _)
+            | Expr::Assignment(_, _)
             | Expr::MultiDeclaration(_, _)
             | Expr::Function(_, _, _)
             // | Expr::Import(_, _)

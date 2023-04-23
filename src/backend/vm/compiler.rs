@@ -233,19 +233,38 @@ impl<Data> Compiler<Data> {
         Ok(())
     }
 
+    fn if_pop(&mut self, pop: bool, span: Span) {
+        if pop {
+            self.write_op(OpCode::Pop, span)
+        }
+    }
+
     fn compile_expr(&mut self, (expr, span): &Spanned<Expr>, pop: bool) -> Result<(), ErrorS> {
         match expr {
             Expr::Literal(value) => {
                 let offset = self.add_constant(value.into());
                 self.write_op_u16(OpCode::LoadConst, offset, *span);
+
+                self.if_pop(pop, *span);
+            }
+
+            Expr::Pair(left, right) => {
+                self.compile_expr(left, false)?;
+                self.compile_expr(right, false)?;
+
+                self.write_op(OpCode::CreatePair, *span);
+
+                self.if_pop(pop, *span);
             }
 
             Expr::Ident(name) => {
                 self.get_variable(name, *span);
+                self.if_pop(pop, *span);
             }
 
             Expr::Block(exprs) => {
                 self.compile_block(exprs, span)?;
+                self.if_pop(pop, *span);
             }
 
             Expr::Import((name, span), body) => match body {
@@ -263,19 +282,40 @@ impl<Data> Compiler<Data> {
             Expr::Declaration((name, span), value) => {
                 if self.is_global() {
                     self.compile_expr(value, false)?;
-
                     let offset = self.add_global_symbol(name.to_string());
                     self.write_op_u16(OpCode::DefineGlobal, offset, *span);
                 } else {
-                    self.define_local(name, *span)?;
                     self.compile_expr(value, false)?;
+                    self.define_local(name, *span)?;
                     self.set_variable(name, *span);
+                }
+            }
+
+            Expr::MultiDeclaration(names, value) => {
+                self.compile_expr(value, false)?;
+
+                let arity: u8 = names
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooMuchToUnpack.into(), *span))?;
+
+                self.write_op_u8(OpCode::Unpack, arity, *span);
+
+                for (name, span) in names {
+                    if self.is_global() {
+                        let offset = self.add_global_symbol(name.to_string());
+                        self.write_op_u16(OpCode::DefineGlobal, offset, *span);
+                    } else {
+                        self.define_local(name, *span)?;
+                        self.set_variable(name, *span);
+                    }
                 }
             }
 
             Expr::Assignment((name, span), value) => {
                 self.compile_expr(value, false)?;
                 self.set_variable(name, *span);
+                self.if_pop(pop, *span);
             }
 
             Expr::Call((name, c_span), args) => {
@@ -291,6 +331,7 @@ impl<Data> Compiler<Data> {
                 }
 
                 self.write_op_u8(OpCode::CallFunction, arity, *span);
+                self.if_pop(pop, *span);
             }
 
             Expr::BuiltinCall((name, c_span), args) => {
@@ -308,6 +349,7 @@ impl<Data> Compiler<Data> {
                 let name = self.add_global_symbol(name.to_string());
                 self.write_u16(name, *span);
                 self.write_u8(arity, *c_span);
+                self.if_pop(pop, *span);
             }
 
             Expr::ContextWrapped((name, c_span), args, varname, body) => {
@@ -338,11 +380,15 @@ impl<Data> Compiler<Data> {
                 self.exit_scope(span);
 
                 self.write_op(OpCode::ExitContext, *span);
+                self.if_pop(pop, *span);
             }
 
             Expr::Function((name, fn_span), arguments, body) => {
-                // if self.level.scope_depth > 1 {
-                //     return Err(())
+                // if self.level.scope_depth != 0 {
+                //     return Err((
+                //         CompileError::NestedFunction(name.to_string()).into(),
+                //         *fn_span,
+                //     ));
                 // }
 
                 let arity: u8 = arguments
@@ -376,17 +422,14 @@ impl<Data> Compiler<Data> {
                 }
 
                 self.compile_exprs(body)?;
-                // let last_span = self.level.function.chunk.last_span();
-                // self.write_op(OpCode::Return, last_span);
-
                 self.exit_scope(span);
 
                 let (function, upvalues) = self.exit_level();
+
                 let value = Value::Function(Rc::new(function));
                 let offset = self.add_constant(value);
                 if upvalues.len() > 0 {
                     self.write_op_u16(OpCode::CreateClosure, offset, *span);
-
                     for Upvalue(idx, is_local) in upvalues {
                         self.write_u8(is_local.into(), *span);
                         self.write_u16(idx, *span);
@@ -427,6 +470,7 @@ impl<Data> Compiler<Data> {
                 }
 
                 self.patch_jump(end_jump, *span)?;
+                self.if_pop(pop, *span);
             }
 
             Expr::Binary(operand, lhs, rhs) => {
@@ -454,6 +498,7 @@ impl<Data> Compiler<Data> {
                 };
 
                 self.write_op(opcode, *span);
+                self.if_pop(pop, *span);
             }
 
             Expr::Unary(operand, rhs) => {
@@ -467,28 +512,29 @@ impl<Data> Compiler<Data> {
                 };
 
                 self.write_op(opcode, *span);
+                self.if_pop(pop, *span);
             }
 
-            _ => todo!(),
+            _ => todo!("compile_expr: {:?}", expr),
         }
 
-        if pop
-            && match expr {
-                // Expr::Assignment(_, _) => self.is_global(),
-                Expr::Declaration(_, _) => false,
-                Expr::MultiDeclaration(_, _) => false,
-                Expr::MultiForLoop(_, _, _) => false,
-                Expr::Function(_, _, _) => false,
-                Expr::ForLoop(_, _, _) => false,
-                Expr::Import(_, _) => false,
-                Expr::Conditional(_, _, _) => false,
-                Expr::ContextWrapped(_, _, _, _) => false,
+        // if pop
+        //     && match expr {
+        //         // Expr::Assignment(_, _) => false,
+        //         Expr::Declaration(_, _) => false,
+        //         Expr::MultiDeclaration(_, _) => false,
+        //         Expr::MultiForLoop(_, _, _) => false,
+        //         Expr::Function(_, _, _) => false,
+        //         Expr::ForLoop(_, _, _) => false,
+        //         Expr::Import(_, _) => false,
+        //         Expr::Conditional(_, _, _) => false,
+        //         Expr::ContextWrapped(_, _, _, _) => false,
 
-                _ => true,
-            }
-        {
-            self.write_op(OpCode::Pop, *span);
-        }
+        //         _ => true,
+        //     }
+        // {
+        //     self.write_op(OpCode::Pop, *span);
+        // }
 
         Ok(())
     }
@@ -629,7 +675,7 @@ impl Level {
 
     fn add_upvalue(&mut self, index: u16, is_local: bool) -> u16 {
         let upvalue = Upvalue(index, is_local);
-        match self.upvalues.iter().position(|u| *u == upvalue) {
+        match self.upvalues.iter().position(|u| u == &upvalue) {
             Some(idx) => idx as u16,
             None => {
                 self.upvalues.push(upvalue);

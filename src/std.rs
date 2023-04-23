@@ -227,6 +227,18 @@ generic_builtins! {
         Value::None
     }
 
+    fn @debug(to_print: rest) {
+        // orange
+        print!("\x1b[38;5;208m");
+
+        for arg in to_print {
+            print!("{} ", arg);
+        }
+        // reset
+        println!("\x1b[0m");
+        Value::None
+    }
+
     fn @input(prompt: str) {
         print!("{}", prompt);
         if let Ok(_) = std::io::stdout().flush() {

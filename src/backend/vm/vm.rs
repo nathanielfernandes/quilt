@@ -1,4 +1,4 @@
-use std::{collections::hash_map::Entry, rc::Rc};
+use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
 
 use arrayvec::ArrayVec;
 use fxhash::FxHashMap;
@@ -27,7 +27,7 @@ where
     globals: FxHashMap<u16, Value>,
     global_symbols: Vec<String>,
 
-    open_upvalues: Vec<Upvalue>,
+    open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
 
     frames: ArrayVec<CallFrame, CALL_STACK_SIZE>,
     frame: CallFrame,
@@ -84,6 +84,18 @@ where
                 return Err(self.error(OverflowError::InstructionOverflow.into()));
             }
 
+            // let op = self.read_u8();
+
+            // println!(
+            //     "stack [{}]",
+            //     &self.stack[self.frame.st..self.sp]
+            //         .iter()
+            //         .map(|v| v.display())
+            //         .collect::<Vec<_>>()
+            //         .join(", ")
+            // );
+            // print!("{:?} ", OpCode::from(op));
+
             #[allow(non_upper_case_globals)]
             match self.read_u8() {
                 Halt => {
@@ -99,7 +111,7 @@ where
                     // for i in self.frame.st..self.sp {
                     //     self.stack[i] = Value::None;
                     // }
-                    println!("sp: {}", self.sp);
+                    // println!("sp: {}", self.sp);
                     self.sp = self.frame.st;
 
                     self.data.on_exit_function();
@@ -140,6 +152,7 @@ where
                 LoadLocal => {
                     let idx = self.read_u16() as usize;
                     let value = self.stack[self.frame.st + idx].clone();
+
                     self.push(value)?;
                 }
 
@@ -209,19 +222,57 @@ where
                     let idx = self.read_u16() as usize;
                     let value = self.peek(0)?.clone();
                     let upvalue = &mut self.frame.closure.upvalues[idx];
-                    upvalue.set(&mut self.stack, value);
+                    {
+                        upvalue.borrow_mut().set(&mut self.stack, value);
+                    }
                 }
 
                 LoadUpvalue => {
                     let idx = self.read_u16() as usize;
                     let upvalue = &self.frame.closure.upvalues[idx];
-                    let value = upvalue.get(&self.stack);
-                    self.push(value)?;
+                    {
+                        let value = upvalue.borrow().get(&self.stack);
+                        self.push(value)?;
+                    }
                 }
 
                 CloseUpvalue => {
                     self.close_upvalues(self.sp - 1);
                     self.pop()?;
+                }
+
+                CreatePair => {
+                    let b = self.pop()?.clone();
+                    let a = self.pop()?.clone();
+                    self.push(Value::Pair(Rc::new((a, b))))?;
+                }
+
+                Unpack => {
+                    let argc = self.read_u8();
+                    let value = self.pop_swap()?;
+                    match (&value, argc) {
+                        (Value::Pair(pair), 2) => {
+                            let (a, b) = (**pair).clone();
+                            self.push(b)?;
+                            self.push(a)?;
+                        }
+                        (Value::Pair(_), _) => {
+                            return Err(self.error_1(TypeError::InsufficientValues(2, argc).into()));
+                        }
+                        (Value::List(list), _) => {
+                            let len = list.len();
+                            if len != argc as usize {
+                                return Err(
+                                    self.error_1(TypeError::InsufficientValues(len, argc).into())
+                                );
+                            }
+
+                            for i in (0..argc).rev() {
+                                self.push(list[i as usize].clone())?;
+                            }
+                        }
+                        _ => return Err(self.error_1(TypeError::Unpackable(value.ntype()).into())),
+                    };
                 }
 
                 CreateFunction => {
@@ -253,7 +304,7 @@ where
                         let is_local = self.read_u8();
                         let index = self.read_u16() as usize;
 
-                        let upvalue: Upvalue = if is_local != 0 {
+                        let upvalue = if is_local == 1 {
                             self.capture_upvalue(self.frame.st + index)
                         } else {
                             self.frame.closure.upvalues[index].clone()
@@ -437,7 +488,7 @@ where
                             self.data.on_enter_function();
                         }
 
-                        _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
+                        _ => Err(self.error_1(TypeError::NotCallable(value.ntype()).into()))?,
                     }
                 }
 
@@ -579,6 +630,8 @@ where
                     unimplemented!("Opcode: {:?}", OpCode::from(op));
                 }
             }
+
+            // print!("\n")
         }
 
         Ok(Value::None)
@@ -606,16 +659,16 @@ where
         Ok(result)
     }
 
-    fn capture_upvalue(&mut self, location: usize) -> Upvalue {
+    fn capture_upvalue(&mut self, location: usize) -> Rc<RefCell<Upvalue>> {
         for upvalue in self.open_upvalues.iter_mut() {
-            if let Upvalue::Open(loc) = upvalue {
-                if *loc == location {
+            if let Upvalue::Open(loc) = *upvalue.borrow() {
+                if loc == location {
                     return upvalue.clone();
                 }
             }
         }
 
-        let upvalue = Upvalue::new(location);
+        let upvalue = Rc::new(RefCell::new(Upvalue::new(location)));
         self.open_upvalues.push(upvalue.clone());
 
         upvalue
@@ -626,17 +679,24 @@ where
             return;
         }
 
-        for idx in (0..self.open_upvalues.len()).rev() {
-            let upvalue = &mut self.open_upvalues[idx];
-            if let Upvalue::Open(l) = upvalue {
-                if *l >= last {
-                    let value = self.stack[*l].clone();
-                    *upvalue = Upvalue::Closed(value);
-
-                    self.open_upvalues.swap_remove(idx);
-                }
+        let value = &self.stack[last];
+        for upvalue in self.open_upvalues.iter() {
+            if upvalue.borrow().is_open_at(last) {
+                upvalue.replace(Upvalue::Closed(value.clone()));
             }
+
+            // if let Upvalue::Open(l) = *upvalue.borrow() {
+            //     if l >= last {
+            //         let value = self.stack[l].clone();
+            //         upvalue.replace(Upvalue::Closed(value));
+
+            //         // self.open_upvalues.swap_remove(idx);
+            //     }
+            // }
         }
+
+        self.open_upvalues
+            .retain(|upvalue| upvalue.borrow().is_open());
     }
 
     #[inline]
@@ -658,7 +718,7 @@ where
 
     #[inline]
     pub fn push(&mut self, value: Value) -> Result<(), ErrorS> {
-        // println!("-> {:?}", value);
+        // print!("-> {}\n", value.display());
         if self.sp > SS {
             return Err(self.error(OverflowError::StackOverflow.into()));
         }
@@ -678,7 +738,7 @@ where
 
         // let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
         // let popped = self.stack[self.sp].clone();
-        // println!("<- {:?}", self.stack[self.sp]);
+        // print!("<- {}\n", self.stack[self.sp].display());
         Ok(&self.stack[self.sp])
     }
 

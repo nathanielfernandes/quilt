@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     hash::{Hash, Hasher},
     rc::Rc,
 };
@@ -234,7 +235,7 @@ impl Hash for Function {
 #[derive(Debug, Clone)]
 pub struct Closure {
     pub function: Rc<Function>,
-    pub upvalues: Vec<Upvalue>,
+    pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
 }
 
 impl PartialEq for Closure {
@@ -245,9 +246,9 @@ impl PartialEq for Closure {
                 .upvalues
                 .iter()
                 .zip(other.upvalues.iter())
-                .all(|(a, b)| match (a, b) {
-                    (Upvalue::Open(a), Upvalue::Open(b)) => a == b,
-                    (Upvalue::Closed(a), Upvalue::Closed(b)) => a == b,
+                .all(|(a, b)| match (&*a.borrow(), &*b.borrow()) {
+                    (Upvalue::Open(l), Upvalue::Open(r)) => l == r,
+                    (Upvalue::Closed(l), Upvalue::Closed(r)) => l == r,
                     _ => false,
                 })
     }
@@ -257,7 +258,7 @@ impl Hash for Closure {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.function.hash(state);
         self.upvalues.len().hash(state);
-        self.upvalues.iter().for_each(|u| u.hash(state));
+        self.upvalues.iter().for_each(|u| u.borrow().hash(state));
     }
 }
 
@@ -283,6 +284,18 @@ impl Upvalue {
         match self {
             Upvalue::Open(l) => stack[*l] = value,
             Upvalue::Closed(c) => *c = value,
+        }
+    }
+
+    pub fn is_open(&self) -> bool {
+        matches!(self, Upvalue::Open(_))
+    }
+
+    pub fn is_open_at(&self, location: usize) -> bool {
+        if let Upvalue::Open(l) = self {
+            *l == location
+        } else {
+            false
         }
     }
 
