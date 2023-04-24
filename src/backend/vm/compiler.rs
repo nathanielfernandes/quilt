@@ -393,6 +393,20 @@ impl<Data> Compiler<Data> {
                 // self.if_pop(pop, *span);
             }
 
+            Expr::Array(items) => {
+                let count = items.len();
+
+                if count > u8::MAX as usize {
+                    return Err((OverflowError::TooManyItems.into(), *span));
+                }
+
+                for item in items.iter().rev() {
+                    self.compile_expr(item)?;
+                }
+
+                self.write_op_u8(OpCode::CreateArray, count as u8, *span);
+            }
+
             Expr::Range(start, end) => {
                 self.compile_expr(start)?;
                 self.compile_expr(end)?;

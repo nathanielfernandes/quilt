@@ -32,6 +32,7 @@ gen_bytecode!(
     CreateFunction,
     CreateClosure,
     CreatePair,
+    CreateArray, // u8
     CreateRange,
     CallFunction, // u8
     CallBuiltin,  // u16, u8

@@ -75,7 +75,7 @@ impl Expr {
                         format!("[{}, {}, {}, {}]", r, g, b, a).dimmed()
                     )
                 }
-                ParserValue::List(_) => {
+                ParserValue::Array(_) => {
                     format!("{}...{}", bracket("[", br_depth), bracket("]", br_depth))
                 }
                 ParserValue::Pair(left, right) => format!(
@@ -95,7 +95,7 @@ impl Expr {
                     format!("{}{}{}", start, ":", end)
                 }
             },
-            Expr::List(list) => format!(
+            Expr::Array(list) => format!(
                 "{}{}{}",
                 bracket("[", br_depth),
                 list.iter()

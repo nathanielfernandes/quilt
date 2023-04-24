@@ -22,7 +22,7 @@ pub enum Value {
     String(Rc<String>),
     Special(Rc<(&'static str, usize)>),
 
-    List(Rc<Vec<Value>>),
+    Array(Rc<Vec<Value>>),
 
     // specialized values for looping
     __LoopCtx(usize),
@@ -42,7 +42,7 @@ impl std::fmt::Display for Value {
             Value::Float(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
-            Value::List(l) => {
+            Value::Array(l) => {
                 write!(f, "[")?;
                 for (i, v) in l.iter().enumerate() {
                     if i > 0 {
@@ -85,7 +85,7 @@ impl Value {
             Value::Color(_) => "color",
             Value::String(_) => "str",
             Value::Special(s) => s.0,
-            Value::List(_) => "list",
+            Value::Array(_) => "list",
             Value::Pair(_) => "pair",
             Value::Spread(_) => "spread",
             Value::Function(_) => "function",
@@ -104,7 +104,7 @@ impl Value {
             }
             Value::Color(c) => format!("#{:02x}{:02x}{:02x}{:02x}", c[0], c[1], c[2], c[3]),
             Value::String(s) => format!("\"{}\"", s).green().to_string(),
-            Value::List(l) => {
+            Value::Array(l) => {
                 if l.len() <= 10 {
                     format!(
                         "[{}]",
@@ -158,7 +158,7 @@ impl Hash for Value {
             }
             Value::String(s) => s.hash(state),
             Value::Special(s) => s.hash(state),
-            Value::List(l) => l.hash(state),
+            Value::Array(l) => l.hash(state),
             Value::Pair(p) => p.hash(state),
             Value::Spread(s) => s.hash(state),
             Value::Function(f) => f.hash(state),
@@ -179,8 +179,8 @@ impl From<crate::shared::ParserValue> for Value {
             crate::shared::ParserValue::Float(f) => Value::Float(f),
             crate::shared::ParserValue::Color(c) => Value::Color(c),
             crate::shared::ParserValue::Str(s) => Value::String(Rc::new(s)),
-            crate::shared::ParserValue::List(l) => {
-                Value::List(Rc::new(l.into_iter().map(Value::from).collect()))
+            crate::shared::ParserValue::Array(l) => {
+                Value::Array(Rc::new(l.into_iter().map(Value::from).collect()))
             }
             crate::shared::ParserValue::Pair(l, r) => {
                 Value::Pair(Rc::new((Value::from(*l), Value::from(*r))))
@@ -203,8 +203,8 @@ impl From<&crate::shared::ParserValue> for Value {
             crate::shared::ParserValue::Float(f) => Value::Float(*f),
             crate::shared::ParserValue::Color(c) => Value::Color(*c),
             crate::shared::ParserValue::Str(s) => Value::String(Rc::new(s.clone())),
-            crate::shared::ParserValue::List(l) => {
-                Value::List(Rc::new(l.iter().map(Value::from).collect()))
+            crate::shared::ParserValue::Array(l) => {
+                Value::Array(Rc::new(l.iter().map(Value::from).collect()))
             }
             crate::shared::ParserValue::Pair(l, r) => {
                 Value::Pair(Rc::new((Value::from(&**l), Value::from(&**r))))

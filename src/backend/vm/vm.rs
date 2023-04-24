@@ -258,6 +258,17 @@ where
                     self.push(Value::Pair(Rc::new((a, b))))?;
                 }
 
+                CreateArray => {
+                    let argc = self.read_u8();
+                    let mut array = Vec::with_capacity(argc as usize);
+
+                    for _ in 0..argc {
+                        array.push(self.pop()?.clone());
+                    }
+
+                    self.push(Value::Array(Rc::new(array)))?;
+                }
+
                 CreateRange => {
                     let b = self.pop()?.clone();
                     let a = self.pop()?.clone();
@@ -291,7 +302,7 @@ where
                         (Value::Pair(_), _) => {
                             return Err(self.error_1(TypeError::InsufficientValues(2, argc).into()));
                         }
-                        (Value::List(list), _) => {
+                        (Value::Array(list), _) => {
                             let len = list.len();
                             if len != argc as usize {
                                 return Err(
@@ -355,9 +366,11 @@ where
                 ExitContext => {
                     if let Some(exit) = self.exit_fn_stack.pop() {
                         exit(&mut self.data)?;
-                    } else {
-                        return Err(self.error(OverflowError::StackUnderflow.into()));
                     }
+                    // no need to check for stack underflow here
+                    // else {
+                    //     return Err(self.error(OverflowError::StackUnderflow.into()));
+                    // }
                 }
 
                 EnterContext => {
@@ -587,12 +600,21 @@ where
                     // println!("iterable: {}", iterable.display());
 
                     let value = match iterable {
-                        Value::List(list) => {
+                        Value::Array(list) => {
                             if let Some(item) = list.get(loop_idx) {
                                 item.clone()
                             } else {
                                 // println!("iter next: end of list");
                                 // end of iteration reached
+                                self.frame.ip += exit_offset;
+                                continue;
+                            }
+                        }
+                        Value::Range(start, end) => {
+                            let loop_idx = loop_idx as i32;
+                            if loop_idx >= *start && loop_idx < *end {
+                                Value::Int(loop_idx)
+                            } else {
                                 self.frame.ip += exit_offset;
                                 continue;
                             }

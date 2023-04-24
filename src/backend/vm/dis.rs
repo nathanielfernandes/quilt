@@ -198,7 +198,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                     .push_str(&format!("\t{}\n", upvalue_offset.to_string().green(),));
             }
 
-            OpCode::CallFunction | OpCode::Unpack => {
+            OpCode::CallFunction | OpCode::Unpack | OpCode::CreateArray => {
                 let arg_count = chunk.ops.read_u8(*offset);
                 *offset += 1;
 

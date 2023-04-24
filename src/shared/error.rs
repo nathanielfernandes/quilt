@@ -149,6 +149,9 @@ impl NamedError for NameError {
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum OverflowError {
+    #[error("an array cannot have more than 256 items")]
+    TooManyItems,
+
     #[error("cannot define more than 256 parameters in a function")]
     TooManyParams,
 
@@ -174,6 +177,7 @@ pub enum OverflowError {
 impl NamedError for OverflowError {
     fn name(&self) -> &'static str {
         match self {
+            Self::TooManyItems => "TooManyItems",
             Self::TooManyParams => "TooManyParams",
             Self::TooManyArgs => "TooManyArgs",
             Self::TooMuchToUnpack => "TooMuchToUnpack",

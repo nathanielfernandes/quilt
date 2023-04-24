@@ -27,7 +27,7 @@ pub enum ParserValue {
     Color([u8; 4]),
 
     // collections
-    List(Vec<ParserValue>),
+    Array(Vec<ParserValue>),
     Str(String),
     Pair(Box<ParserValue>, Box<ParserValue>),
     Spread(Vec<ParserValue>),
@@ -43,7 +43,7 @@ impl ParserValue {
             ParserValue::Float(n) => n.to_string().yellow().to_string(),
             ParserValue::Str(s) => format!("'{}'", s).green().to_string(),
             ParserValue::Color([r, g, b, a]) => format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
-            ParserValue::List(l) => {
+            ParserValue::Array(l) => {
                 let mut s = "[".to_string();
                 for (i, v) in l.iter().enumerate() {
                     if i > 0 {
@@ -81,7 +81,7 @@ impl std::fmt::Display for ParserValue {
             ParserValue::Float(n) => write!(f, "{}", n),
             ParserValue::Str(s) => write!(f, "{}", s),
             ParserValue::Color([r, g, b, a]) => write!(f, "#{:02x}{:02x}{:02x}{:02x}", r, g, b, a),
-            ParserValue::List(l) => {
+            ParserValue::Array(l) => {
                 write!(f, "[")?;
                 for (i, v) in l.iter().enumerate() {
                     if i > 0 {
@@ -117,7 +117,7 @@ impl ParserValue {
             ParserValue::Float(_) => "float",
             ParserValue::Str(_) => "str",
             ParserValue::Color(_) => "color",
-            ParserValue::List(_) => "list",
+            ParserValue::Array(_) => "list",
             ParserValue::Pair(_, _) => "pair",
             ParserValue::Range(_, _) => "range",
             ParserValue::Spread(_) => "spread",
@@ -176,7 +176,7 @@ impl From<[u8; 4]> for ParserValue {
 
 impl From<Vec<ParserValue>> for ParserValue {
     fn from(l: Vec<ParserValue>) -> Self {
-        ParserValue::List(l)
+        ParserValue::Array(l)
     }
 }
 

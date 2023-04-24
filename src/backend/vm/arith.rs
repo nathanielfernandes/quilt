@@ -34,7 +34,7 @@ impl Value {
     #[inline]
     pub fn spread(&self) -> Result<Value, Error> {
         match self {
-            Value::List(l) => Ok(Value::Spread(l.clone())),
+            Value::Array(l) => Ok(Value::Spread(l.clone())),
             Value::Pair(pair) => Ok(Value::Spread(Rc::new(vec![pair.0.clone(), pair.1.clone()]))),
             Value::String(s) => Ok(Value::Spread(Rc::new(
                 s.chars()
@@ -334,10 +334,10 @@ impl Value {
                 Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
             }
 
-            (Value::List(lhs), Value::List(rhs)) => {
+            (Value::Array(lhs), Value::Array(rhs)) => {
                 let mut new_list = (**lhs).clone();
                 new_list.extend((**rhs).clone());
-                Ok(Value::List(Rc::new(new_list)))
+                Ok(Value::Array(Rc::new(new_list)))
             }
 
             _ => Err(TypeError::UnsupportedBinaryOperation {

@@ -188,7 +188,7 @@ impl Consumable for BuiltinArgs {
     fn list(&mut self) -> Result<Vec<Value>, BuiltinError> {
         let (value, span) = self.consume("list")?;
         match value {
-            Value::List(l) => Ok((*l).clone()),
+            Value::Array(l) => Ok((*l).clone()),
             Value::Pair(pair) => Ok(vec![pair.0.clone(), pair.1.clone()]),
             _ => Err(expected(value.ntype(), "list", span)),
         }

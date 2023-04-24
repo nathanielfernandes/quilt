@@ -25,7 +25,7 @@ use crate::shared::{ParserValue, Span, Spanned};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal(ParserValue),
-    List(Vec<Spanned<Expr>>),
+    Array(Vec<Spanned<Expr>>),
     Pair(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 
     Ident(String),
@@ -180,7 +180,7 @@ peg::parser!(
         / i:INT() { ParserValue::Int(i) }
         / s:STRING() { ParserValue::Str(s) }
         / "(" _ h:literal() _ "," _ t:literal() _ ")" { ParserValue::Pair(Box::new(h), Box::new(t)) }
-        / "[" _ e:COMMASEP(<literal()>) _ "]" { ParserValue::List(e) }
+        / "[" _ e:COMMASEP(<literal()>) _ "]" { ParserValue::Array(e) }
 
         rule expr() -> Spanned<Expr>
         = precedence! {
@@ -236,7 +236,7 @@ peg::parser!(
             --
             l:literal() { Expr::Literal(l) }
             "..." _ e:@ { Expr::Unary(Op::Spread, Box::new(e)) }
-            "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::List(e) }
+            "[" _ e:COMMASEP(<expr()>) _ "]" { Expr::Array(e) }
             "(" _ l:expr() _ "," _ r:expr() _ ")" { Expr::Pair(Box::new(l), Box::new(r)) }
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(ParserValue::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::BuiltinCall(i, args) }

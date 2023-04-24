@@ -62,14 +62,14 @@ generic_builtins! {
 
     fn @len(arg: any) {
         match arg {
-            Value::List(l) => Value::Int(l.len() as i32),
+            Value::Array(l) => Value::Int(l.len() as i32),
             Value::String(s) => Value::Int(s.len() as i32),
             _ => error!(format!("type `{}` cannot be converted to `{}`", arg.ntype(), "len"))?,
         }
     }
 
     fn @list(start: u8, end: u8) {
-        Value::List(Rc::new((start..end).map(|i| Value::Int(i as i32)).collect()))
+        Value::Array(Rc::new((start..end).map(|i| Value::Int(i as i32)).collect()))
     }
 
     fn @rgba(r: u8, g: u8, b: u8, a: u8) {
