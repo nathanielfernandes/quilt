@@ -228,9 +228,13 @@ impl<'a, Data> Disassembler<'a, Data> {
                 ));
             }
 
-            OpCode::JumpIfFalse | OpCode::Jump => {
+            OpCode::JumpIfFalse | OpCode::JumpForward | OpCode::JumpBackward | OpCode::IterNext => {
                 let jump_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
+
+                if let OpCode::IterNext = op {
+                    *offset += 2;
+                }
 
                 self.output
                     .push_str(&format!("\t{}\n", jump_offset.to_string().green(),));

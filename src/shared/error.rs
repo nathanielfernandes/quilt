@@ -101,6 +101,12 @@ pub enum TypeError {
 
     #[error("unsupported unary operation `{op}` on `{rhs}`")]
     UnsupportedUnaryOperation { op: Op, rhs: ValueType },
+
+    #[error("cannot iterate over `{0}`")]
+    NotIterable(ValueType),
+
+    #[error("failed to iterate :(")]
+    FailedToIterate,
 }
 
 impl NamedError for TypeError {
@@ -113,6 +119,8 @@ impl NamedError for TypeError {
             Self::Unpackable(_) => "Unpackable",
             Self::InsufficientValues(_, _) => "InsufficientValues",
             Self::UnsupportedUnaryOperation { .. } => "UnsupportedUnaryOperation",
+            Self::NotIterable(_) => "NotIterable",
+            Self::FailedToIterate => "FailedToIterate",
         }
     }
 }
