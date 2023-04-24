@@ -96,17 +96,37 @@ impl<Data> Compiler<Data> {
 
     #[inline]
     fn write_jump(&mut self, op: OpCode, span: Span) -> usize {
-        self.write_op(op, span);
-        self.write_u16(0, span);
+        self.write_op_u16(op, 0, span);
         self.level.function.chunk.len() - 2
     }
 
+    #[inline]
+    fn write_jump_backward(&mut self, start: usize, span: Span) -> Result<(), ErrorS> {
+        let jump = self.level.function.chunk.ops.len() + 3 - start;
+        if jump > u16::MAX as usize {
+            return Err((OverflowError::JumpTooLarge.into(), span));
+        }
+        self.write_op_u16(OpCode::JumpBackward, jump as u16, span);
+        Ok(())
+    }
+
+    #[inline]
     fn patch_jump(&mut self, offset: usize, span: Span) -> Result<(), ErrorS> {
         let jump = self.level.function.chunk.ops.len() - 2 - offset;
         if jump > u16::MAX as usize {
             return Err((OverflowError::JumpTooLarge.into(), span));
         }
         self.patch_u16(offset, jump as u16);
+        Ok(())
+    }
+
+    #[inline]
+    fn patch_jump_ex(&mut self, offset: usize, extra: u16, span: Span) -> Result<(), ErrorS> {
+        let jump = self.level.function.chunk.ops.len() - 2 - offset;
+        if jump > u16::MAX as usize {
+            return Err((OverflowError::JumpTooLarge.into(), span));
+        }
+        self.patch_u16(offset, jump as u16 - extra);
         Ok(())
     }
 
@@ -148,7 +168,7 @@ impl<Data> Compiler<Data> {
 
         let mut ops = Vec::new();
         while let Some(local) = self.level.locals.last() {
-            if local.depth > self.level.scope_depth {
+            if local.cleanup && local.depth > self.level.scope_depth {
                 if local.is_captured {
                     ops.push(OpCode::CloseUpvalue);
                 } else {
@@ -239,11 +259,11 @@ impl<Data> Compiler<Data> {
                 self.enter_level(level);
                 self.enter_scope();
 
-                self.define_local(&name, *fn_span)?;
+                self.define_local(&name, true);
                 // self.set_variable(name, *span);
 
-                for (name, span) in arguments {
-                    self.define_local(&name, *span)?;
+                for (name, _) in arguments {
+                    self.define_local(&name, true);
                 }
 
                 self.compile_stmnts(&body)?;
@@ -268,7 +288,7 @@ impl<Data> Compiler<Data> {
                     let offset = self.add_global_symbol(name.to_string());
                     self.write_op_u16(OpCode::DefineGlobal, offset, span);
                 } else {
-                    self.define_local(&name, span)?;
+                    self.define_local(&name, true);
                     self.set_variable(&name, span);
                 }
             }
@@ -278,7 +298,7 @@ impl<Data> Compiler<Data> {
                     let offset = self.add_global_symbol(name.to_string());
                     self.write_op_u16(OpCode::DefineGlobal, offset, *span);
                 } else {
-                    self.define_local(&name, *span)?;
+                    self.define_local(&name, true);
                     self.set_variable(&name, *span);
                 }
             }
@@ -297,7 +317,7 @@ impl<Data> Compiler<Data> {
                         let offset = self.add_global_symbol(name.to_string());
                         self.write_op_u16(OpCode::DefineGlobal, offset, *span);
                     } else {
-                        self.define_local(&name, *span)?;
+                        self.define_local(&name, true);
                         self.set_variable(&name, *span);
                     }
                 }
@@ -322,13 +342,28 @@ impl<Data> Compiler<Data> {
                 }
             }
 
+            // Expr::ForLoop(varname, iterable, body) => {
+            //     self.enter_scope();
+
+            //     let start = self.level.function.chunk.len();
+
+            //     // push loop ctx ( used to keep track of loop state )
+            //     self.write_op(OpCode::NewLoopCtx, span);
+
+            //     // compile iterable
+            //     self.compile_expr(&iterable)?;
+
+            //     let exit = self.write_jump(OpCode::JumpIfFalse, span);
+
+            //     // compile body
+            //     self.compile_stmnts(&body)?;
+            // }
             _ => {
                 self.compile_expr(stmnt)?;
                 if pop {
                     self.write_op(OpCode::Pop, stmnt.1);
                 }
-            } // Expr::ForLoop(_, _, _) => {}
-              // Expr::MultiForLoop(_, _, _) => {}
+            } // Expr::MultiForLoop(_, _, _) => {}
         }
 
         Ok(())
@@ -337,9 +372,15 @@ impl<Data> Compiler<Data> {
     fn compile_expr(&mut self, (expr, span): &Spanned<Expr>) -> Result<(), ErrorS> {
         match expr {
             Expr::Literal(value) => {
-                let offset = self.add_constant(value.into());
-                self.write_op_u16(OpCode::LoadConst, offset, *span);
-
+                match value {
+                    crate::prelude::ParserValue::None => {
+                        self.write_op(OpCode::LoadNone, *span);
+                    }
+                    _ => {
+                        let offset = self.add_constant(value.into());
+                        self.write_op_u16(OpCode::LoadConst, offset, *span);
+                    }
+                }
                 // self.if_pop(pop, *span);
             }
 
@@ -350,6 +391,12 @@ impl<Data> Compiler<Data> {
                 self.write_op(OpCode::CreatePair, *span);
 
                 // self.if_pop(pop, *span);
+            }
+
+            Expr::Range(start, end) => {
+                self.compile_expr(start)?;
+                self.compile_expr(end)?;
+                self.write_op(OpCode::CreateRange, *span);
             }
 
             Expr::Ident(name) => {
@@ -420,7 +467,7 @@ impl<Data> Compiler<Data> {
                 self.enter_scope();
 
                 if let Some((varname, span)) = varname {
-                    self.define_local(varname, *span)?;
+                    self.define_local(varname, true);
                     self.set_variable(varname, *span);
                 }
 
@@ -441,7 +488,7 @@ impl<Data> Compiler<Data> {
 
                 self.compile_block(then)?;
 
-                let end_jump = self.write_jump(OpCode::Jump, *span);
+                let end_jump = self.write_jump(OpCode::JumpForward, *span);
 
                 // else
                 self.patch_jump(else_jump, *span)?;
@@ -454,6 +501,83 @@ impl<Data> Compiler<Data> {
 
                 self.patch_jump(end_jump, *span)?;
                 // self.if_pop(pop, *span);
+            }
+
+            Expr::WhileLoop(cond, body) => {
+                let cspan = cond.1;
+
+                // push none in case loop does not run at all (loops are expressions)
+                self.write_op(OpCode::LoadNone, *span);
+
+                let start = self.level.function.chunk.len();
+
+                self.compile_expr(&cond)?;
+
+                let exit = self.write_jump(OpCode::JumpIfFalse, *span);
+
+                // pop the condition
+                self.write_op(OpCode::Pop, cspan);
+
+                // pop off the none or the previous iteration value
+                self.write_op(OpCode::Pop, cspan);
+
+                // compile body
+                self.compile_block(&body)?;
+
+                self.write_jump_backward(start, cspan)?;
+                self.patch_jump(exit, *span)?;
+
+                // pop the condition
+                self.write_op(OpCode::Pop, cspan);
+            }
+
+            Expr::ForLoop((varname, nspan), iterable, body) => {
+                self.enter_scope();
+
+                // initial loop value
+                self.write_op(OpCode::LoadNone, *span);
+                self.define_local(varname, true);
+                self.set_variable(varname, *nspan);
+
+                // reserve two stack slots for the loop context and the iteration value
+                self.reserve_temp_local_space();
+                self.reserve_temp_local_space();
+
+                // push a new loop context (keeps track of the current iteration)
+                self.write_op(OpCode::NewLoopCtx, *span);
+                self.compile_expr(&iterable)?;
+
+                self.write_op(OpCode::LoadNone, *span);
+                let start = self.level.function.chunk.len();
+
+                // IterNext takes (end jump u16) and assumes the loop context is on top of the stack
+                let data_offset = self.level.locals.len() - 2;
+                let exit = self.write_jump(OpCode::IterNext, *span);
+                self.write_u16(data_offset as u16, *span);
+                self.set_variable(varname, *nspan);
+
+                self.write_op(OpCode::Pop, *span);
+                self.write_op(OpCode::Pop, *span);
+
+                // compile body
+                self.compile_block(&body)?;
+
+                // pop off last value
+                // self.write_op(OpCode::Pop, *span);
+
+                self.write_jump_backward(start, *nspan)?;
+                // account for extra 2 op slots for the iternext
+                self.patch_jump_ex(exit, 2, *nspan)?;
+
+                self.exit_scope(span);
+
+                // pop none and return value
+                // self.write_op(OpCode::Swap, *span);
+                // self.write_op(OpCode::Pop, *span);
+                // self.write_op(OpCode::Swap, *span);
+                // self.write_op(OpCode::Pop, *span);
+                // self.write_op(OpCode::Swap, *span);
+                // self.write_op(OpCode::Pop, *span);
             }
 
             Expr::Binary(operand, lhs, rhs) => {
@@ -544,8 +668,12 @@ impl<Data> Compiler<Data> {
         }
     }
 
+    #[inline]
+    fn reserve_temp_local_space(&mut self) {
+        self.define_local("", true)
+    }
     // todo: remove unused span and error
-    fn define_local(&mut self, name: &str, _: Span) -> Result<(), ErrorS> {
+    fn define_local(&mut self, name: &str, cleanup: bool) {
         for i in (0..self.level.locals.len()).rev() {
             let local = &self.level.locals[i];
             if local.depth < self.level.scope_depth {
@@ -558,11 +686,10 @@ impl<Data> Compiler<Data> {
                     name: name.to_string(),
                     depth: self.level.scope_depth,
                     is_captured: false,
+                    cleanup,
                 });
 
-                // return Err((NameError::AlreadyDefined(name.to_string()).into(), span));
-
-                return Ok(());
+                return;
             }
         }
 
@@ -571,9 +698,8 @@ impl<Data> Compiler<Data> {
             name: name.to_string(),
             depth: self.level.scope_depth,
             is_captured: false,
+            cleanup,
         });
-
-        Ok(())
     }
 }
 
@@ -586,6 +712,9 @@ struct Local {
     // scope depth (starts at 1)
     depth: u16,
     is_captured: bool,
+
+    // whether to clean up the local variable after a scope ends
+    cleanup: bool,
 }
 
 pub struct Level {

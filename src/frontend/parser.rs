@@ -59,6 +59,7 @@ pub enum Expr {
     Range(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     ForLoop(Spanned<String>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
     MultiForLoop(Vec<Spanned<String>>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
+    WhileLoop(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
 
     Import(Spanned<String>, Option<Vec<Spanned<Expr>>>),
 }
@@ -197,6 +198,8 @@ peg::parser!(
             KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
             --
             // KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::RangeLoop(i, Box::new(start), Box::new(end), body) }
+
+            KW("while") _ cond:expr() _ body:block() { Expr::WhileLoop(Box::new(cond), body) }
             KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ iterable:expr() _ body:block() { Expr::ForLoop(i, Box::new(iterable), body) }
             KW("for") _ "[" _ i:COMMASEP(<spanned(<IDENT()>)>) _ "]" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(i, Box::new(iterable), body) }
             KW("for") _  "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(vec![left, right], Box::new(iterable), body) }
@@ -308,6 +311,7 @@ pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
                 }
             }
             Expr::ForLoop(_, _, body) => fix_return((body, span)),
+            Expr::WhileLoop(_, body) => fix_return((body, span)),
             Expr::MultiForLoop(_, _, body) => fix_return((body, span)),
 
             Expr::Declaration(_, _)

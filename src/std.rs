@@ -229,10 +229,10 @@ generic_builtins! {
 
     fn @debug(to_print: rest) {
         // orange
-        print!("\x1b[38;5;208m");
+        print!("\x1b[38;5;208mDEBUG: ");
 
         for arg in to_print {
-            print!("{} ", arg);
+            print!("{} ", arg.display());
         }
         // reset
         println!("\x1b[0m");

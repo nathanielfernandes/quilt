@@ -18,6 +18,8 @@ gen_bytecode!(
     Halt,
     Return,
     Pop,
+    PopMany, // u8
+    Swap,
     LoadConst, // u16
     LoadLocal, // u16
     SetLocal,  // u16
@@ -30,15 +32,22 @@ gen_bytecode!(
     CreateFunction,
     CreateClosure,
     CreatePair,
+    CreateRange,
     CallFunction, // u8
     CallBuiltin,  // u16, u8
     EnterContext, // u16, u8
     ExitContext,
     BlockResult,
     BlockReturn,
-    JumpIfFalse, // u16
-    Jump,        // u16
-    Unpack,      // u8
+    JumpIfFalse,  // u16
+    JumpForward,  // u16
+    JumpBackward, // u16
+    Unpack,       // u8
+    LoadNone,
+    NewLoopCtx,
+    // gets a value from an iterable and pushes it to the stack
+    // if the iterable is exhausted, jumps to the end of the loop
+    IterNext, // u16 (jump if end), u16 (loopctx index), loopctx+ 1 =  (iterable index)
     UnaryNegate,
     UnaryNot,
     UnarySpread,

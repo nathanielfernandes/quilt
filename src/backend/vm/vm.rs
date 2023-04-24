@@ -84,7 +84,7 @@ where
                 return Err(self.error(OverflowError::InstructionOverflow.into()));
             }
 
-            // let op = self.read_u8();
+            let op = self.read_u8();
 
             // println!(
             //     "stack [{}]",
@@ -94,13 +94,17 @@ where
             //         .collect::<Vec<_>>()
             //         .join(", ")
             // );
-            // print!("{:?} ", OpCode::from(op));
+            // println!("{:?} ", OpCode::from(op));
 
             #[allow(non_upper_case_globals)]
-            match self.read_u8() {
+            match op {
                 Halt => {
                     println!("Halt");
                     break;
+                }
+
+                LoadNone => {
+                    self.push(Value::None)?;
                 }
 
                 Return => {
@@ -115,7 +119,8 @@ where
                     // for i in self.frame.st..self.sp {
                     //     self.stack[i] = Value::None;
                     // }
-                    // println!("sp: {}", self.sp);
+
+                    println!("sp: {}", self.sp);
                     self.sp = self.frame.st;
 
                     self.data.on_exit_function();
@@ -140,6 +145,7 @@ where
                     if let Some(result) = self.block_results.pop() {
                         self.push(result)?;
                     } else {
+                        println!("block cried");
                         return Err(self.error(OverflowError::StackUnderflow.into()));
                     }
                 }
@@ -163,6 +169,7 @@ where
                 SetLocal => {
                     let idx = self.read_u16() as usize;
                     let value = self.peek(0)?;
+
                     self.stack[self.frame.st + idx] = value.clone();
                 }
 
@@ -249,6 +256,27 @@ where
                     let b = self.pop()?.clone();
                     let a = self.pop()?.clone();
                     self.push(Value::Pair(Rc::new((a, b))))?;
+                }
+
+                CreateRange => {
+                    let b = self.pop()?.clone();
+                    let a = self.pop()?.clone();
+
+                    match (a, b) {
+                        (Value::Int(a), Value::Int(b)) => {
+                            self.push(Value::Range(a, b))?;
+                        }
+                        (Value::Int(_), b) => {
+                            return Err(self.error(TypeError::Expected("int", b.ntype()).into()));
+                        }
+                        (a, Value::Int(_)) => {
+                            return Err(self.error(TypeError::Expected("int", a.ntype()).into()));
+                        }
+
+                        (a, _) => {
+                            return Err(self.error(TypeError::Expected("int", a.ntype()).into()));
+                        }
+                    }
                 }
 
                 Unpack => {
@@ -499,10 +527,16 @@ where
                     }
                 }
 
-                Jump => {
+                JumpForward => {
                     let offset = self.read_u16() as usize;
                     self.frame.ip += offset;
                 }
+
+                JumpBackward => {
+                    let offset = self.read_u16() as usize;
+                    self.frame.ip -= offset;
+                }
+
                 JumpIfFalse => {
                     let offset = self.read_u16() as usize;
                     let value = self.peek(0)?;
@@ -510,6 +544,63 @@ where
                     if !value.is_truthy().map_err(|e| self.error_1(e))? {
                         self.frame.ip += offset;
                     }
+                }
+
+                Swap => {
+                    // swaps the top 2 values on the stack
+                    self.swap()?;
+                }
+
+                NewLoopCtx => {
+                    self.push(Value::__LoopCtx(0))?;
+                }
+
+                IterNext => {
+                    let exit_offset = self.read_u16() as usize;
+                    let data_offset = self.read_u16() as usize;
+
+                    // let s = self.stack[0..self.sp]
+                    //     .iter()
+                    //     .map(|v| v.display())
+                    //     .collect::<Vec<String>>()
+                    //     .join(", ");
+
+                    // println!("stack: [{}]", s);
+
+                    // println!("stack: {}",
+                    let loop_idx = {
+                        let value = &self.stack[self.frame.st + data_offset];
+                        // println!("iter next: {}", value.display());
+                        if let Value::__LoopCtx(loop_idx) = value {
+                            *loop_idx
+                        } else {
+                            return Err(self.error_1(TypeError::FailedToIterate.into()));
+                        }
+                    };
+
+                    if let Value::__LoopCtx(loop_idx) = &mut self.stack[self.frame.st + data_offset]
+                    {
+                        *loop_idx += 1;
+                    }
+
+                    let iterable = &self.stack[self.frame.st + data_offset + 1];
+                    // println!("iterable: {}", iterable.display());
+
+                    let value = match iterable {
+                        Value::List(list) => {
+                            if let Some(item) = list.get(loop_idx) {
+                                item.clone()
+                            } else {
+                                // println!("iter next: end of list");
+                                // end of iteration reached
+                                self.frame.ip += exit_offset;
+                                continue;
+                            }
+                        }
+                        _ => Err(self.error_1(TypeError::NotIterable(iterable.ntype()).into()))?,
+                    };
+
+                    self.push(value)?;
                 }
 
                 UnaryNegate => {
@@ -727,7 +818,7 @@ where
     #[inline]
     pub fn push(&mut self, value: Value) -> Result<(), ErrorS> {
         // print!("-> {}\n", value.display());
-        if self.sp > SS {
+        if self.sp >= SS {
             return Err(self.error(OverflowError::StackOverflow.into()));
         }
 
@@ -780,6 +871,26 @@ where
         }
 
         Ok(&self.stack[self.sp - distance - 1])
+    }
+
+    #[inline]
+    pub fn peek_mut(&mut self, distance: usize) -> Result<&mut Value, ErrorS> {
+        if self.sp < distance + 1 {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+
+        Ok(&mut self.stack[self.sp - distance - 1])
+    }
+
+    #[inline]
+    pub fn swap(&mut self) -> Result<(), ErrorS> {
+        if self.sp < 2 {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+
+        self.stack.swap(self.sp - 1, self.sp - 2);
+
+        Ok(())
     }
 
     #[inline]
