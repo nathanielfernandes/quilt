@@ -145,13 +145,17 @@ where
                     if let Some(result) = self.block_results.pop() {
                         self.push(result)?;
                     } else {
-                        println!("block cried");
                         return Err(self.error(OverflowError::StackUnderflow.into()));
                     }
                 }
 
                 Pop => {
                     self.pop()?;
+                }
+
+                PopMany => {
+                    let count = self.read_u16() as usize;
+                    self.pop_many(count)?;
                 }
 
                 LoadConst => {
@@ -278,14 +282,14 @@ where
                             self.push(Value::Range(a, b))?;
                         }
                         (Value::Int(_), b) => {
-                            return Err(self.error(TypeError::Expected("int", b.ntype()).into()));
+                            return Err(self.error_1(TypeError::Expected("int", b.ntype()).into()));
                         }
                         (a, Value::Int(_)) => {
-                            return Err(self.error(TypeError::Expected("int", a.ntype()).into()));
+                            return Err(self.error_1(TypeError::Expected("int", a.ntype()).into()));
                         }
 
                         (a, _) => {
-                            return Err(self.error(TypeError::Expected("int", a.ntype()).into()));
+                            return Err(self.error_1(TypeError::Expected("int", a.ntype()).into()));
                         }
                     }
                 }
@@ -611,8 +615,8 @@ where
                             }
                         }
                         Value::Range(start, end) => {
-                            let loop_idx = loop_idx as i32;
-                            if loop_idx >= *start && loop_idx < *end {
+                            let loop_idx = start + loop_idx as i32;
+                            if loop_idx < *end {
                                 Value::Int(loop_idx)
                             } else {
                                 self.frame.ip += exit_offset;
@@ -682,7 +686,6 @@ where
 
                 BinaryEqual => {
                     let (lhs, rhs) = self.pop_double_ref()?;
-
                     let value = lhs.equal(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
@@ -821,13 +824,13 @@ where
     }
 
     #[inline]
-    pub fn error(&self, error: Error) -> ErrorS {
+    fn error(&self, error: Error) -> ErrorS {
         let span = self.frame.closure.function.chunk.get_span(self.frame.ip);
         (error, span)
     }
 
     #[inline]
-    pub fn error_1(&self, error: Error) -> ErrorS {
+    fn error_1(&self, error: Error) -> ErrorS {
         let span = self
             .frame
             .closure
@@ -838,7 +841,7 @@ where
     }
 
     #[inline]
-    pub fn push(&mut self, value: Value) -> Result<(), ErrorS> {
+    fn push(&mut self, value: Value) -> Result<(), ErrorS> {
         // print!("-> {}\n", value.display());
         if self.sp >= SS {
             return Err(self.error(OverflowError::StackOverflow.into()));
@@ -851,7 +854,7 @@ where
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Result<&Value, ErrorS> {
+    fn pop(&mut self) -> Result<&Value, ErrorS> {
         if self.sp == 0 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
         }
@@ -861,6 +864,16 @@ where
         // let popped = self.stack[self.sp].clone();
         // print!("<- {}\n", self.stack[self.sp].display());
         Ok(&self.stack[self.sp])
+    }
+
+    #[inline]
+    fn pop_many(&mut self, n: usize) -> Result<(), ErrorS> {
+        if self.sp < n {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+        self.sp -= n;
+
+        Ok(())
     }
 
     #[inline]
@@ -877,7 +890,7 @@ where
     }
 
     #[inline]
-    pub fn pop_double_ref(&mut self) -> Result<(&Value, &Value), ErrorS> {
+    fn pop_double_ref(&mut self) -> Result<(&Value, &Value), ErrorS> {
         if self.sp < 2 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
         }
@@ -887,7 +900,7 @@ where
     }
 
     #[inline]
-    pub fn peek(&self, distance: usize) -> Result<&Value, ErrorS> {
+    fn peek(&self, distance: usize) -> Result<&Value, ErrorS> {
         if self.sp < distance + 1 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
         }
@@ -895,17 +908,17 @@ where
         Ok(&self.stack[self.sp - distance - 1])
     }
 
-    #[inline]
-    pub fn peek_mut(&mut self, distance: usize) -> Result<&mut Value, ErrorS> {
-        if self.sp < distance + 1 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
+    // #[inline]
+    // fn peek_mut(&mut self, distance: usize) -> Result<&mut Value, ErrorS> {
+    //     if self.sp < distance + 1 {
+    //         return Err(self.error(OverflowError::StackUnderflow.into()));
+    //     }
 
-        Ok(&mut self.stack[self.sp - distance - 1])
-    }
+    //     Ok(&mut self.stack[self.sp - distance - 1])
+    // }
 
     #[inline]
-    pub fn swap(&mut self) -> Result<(), ErrorS> {
+    fn swap(&mut self) -> Result<(), ErrorS> {
         if self.sp < 2 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
         }
@@ -916,14 +929,14 @@ where
     }
 
     #[inline]
-    pub fn read_u8(&mut self) -> u8 {
+    fn read_u8(&mut self) -> u8 {
         let value = self.frame.closure.function.chunk.ops.read_u8(self.frame.ip);
         self.frame.ip += 1;
         value
     }
 
     #[inline]
-    pub fn read_u16(&mut self) -> u16 {
+    fn read_u16(&mut self) -> u16 {
         let value = self
             .frame
             .closure
@@ -936,26 +949,26 @@ where
     }
 
     #[inline]
-    pub fn read_constant(&mut self) -> &Value {
+    fn read_constant(&mut self) -> &Value {
         let idx = self.read_u16();
         &self.frame.closure.function.chunk.constants[idx as usize]
     }
 
     #[inline]
-    pub fn get_constant(&self, idx: u16) -> &Value {
+    fn get_constant(&self, idx: u16) -> &Value {
         &self.frame.closure.function.chunk.constants[idx as usize]
     }
 
-    #[inline]
-    pub fn read_symbol(&mut self) -> &str {
-        let idx = self.read_u16();
-        &self.frame.closure.function.chunk.symbols[idx as usize]
-    }
+    // #[inline]
+    // fn read_symbol(&mut self) -> &str {
+    //     let idx = self.read_u16();
+    //     &self.frame.closure.function.chunk.symbols[idx as usize]
+    // }
 
-    #[inline]
-    pub fn get_symbol(&self, idx: u16) -> &str {
-        &self.frame.closure.function.chunk.symbols[idx as usize]
-    }
+    // #[inline]
+    // fn get_symbol(&self, idx: u16) -> &str {
+    //     &self.frame.closure.function.chunk.symbols[idx as usize]
+    // }
 
     // pub fn profile(
     //     &mut self,

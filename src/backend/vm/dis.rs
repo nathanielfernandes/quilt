@@ -228,7 +228,11 @@ impl<'a, Data> Disassembler<'a, Data> {
                 ));
             }
 
-            OpCode::JumpIfFalse | OpCode::JumpForward | OpCode::JumpBackward | OpCode::IterNext => {
+            OpCode::JumpIfFalse
+            | OpCode::JumpForward
+            | OpCode::JumpBackward
+            | OpCode::IterNext
+            | OpCode::PopMany => {
                 let jump_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 

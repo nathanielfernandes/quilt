@@ -18,7 +18,7 @@ gen_bytecode!(
     Halt,
     Return,
     Pop,
-    PopMany, // u8
+    PopMany, // u16
     Swap,
     LoadConst, // u16
     LoadLocal, // u16

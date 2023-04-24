@@ -184,8 +184,27 @@ impl<Data> Compiler<Data> {
         if ops.len() > 0 {
             self.write_op(OpCode::BlockResult, *span);
 
+            let mut pop_queue = 0_u16;
+
             for op in ops.into_iter() {
+                if let OpCode::Pop = op {
+                    pop_queue += 1;
+                    continue;
+                } else {
+                    if pop_queue >= 2 {
+                        self.write_op_u16(OpCode::PopMany, pop_queue, *span)
+                    } else if pop_queue == 1 {
+                        self.write_op(OpCode::Pop, *span);
+                    }
+                }
+
                 self.write_op(op, *span);
+            }
+
+            if pop_queue >= 2 {
+                self.write_op_u16(OpCode::PopMany, pop_queue, *span)
+            } else if pop_queue == 1 {
+                self.write_op(OpCode::Pop, *span);
             }
 
             self.write_op(OpCode::BlockReturn, *span);
@@ -493,12 +512,16 @@ impl<Data> Compiler<Data> {
             }
 
             Expr::Conditional(condition, then, otherwise) => {
+                // push none in case loop does not run at all (loops are expressions)
+                self.write_op(OpCode::LoadNone, *span);
+
                 self.compile_expr(condition)?;
 
                 // if the condition is false, go to else
                 let else_jump = self.write_jump(OpCode::JumpIfFalse, *span);
-                // pop off condition
-                self.write_op(OpCode::Pop, *span);
+
+                // pop off condition and default none
+                self.write_op_u16(OpCode::PopMany, 2, *span);
 
                 self.compile_block(then)?;
 
@@ -506,14 +529,21 @@ impl<Data> Compiler<Data> {
 
                 // else
                 self.patch_jump(else_jump, *span)?;
-                // pop off condition
-                self.write_op(OpCode::Pop, *span);
 
                 if let Some(otherwise) = otherwise {
+                    // pop off condition
+                    // pop off default none
+                    self.write_op_u16(OpCode::PopMany, 2, *span);
+
                     self.compile_block(otherwise)?;
+                } else {
+                    // pop off condition
+                    self.write_op(OpCode::Pop, *span);
                 }
 
                 self.patch_jump(end_jump, *span)?;
+
+                // self.write_op(OpCode::Pop, *span);
                 // self.if_pop(pop, *span);
             }
 
@@ -530,10 +560,8 @@ impl<Data> Compiler<Data> {
                 let exit = self.write_jump(OpCode::JumpIfFalse, *span);
 
                 // pop the condition
-                self.write_op(OpCode::Pop, cspan);
-
                 // pop off the none or the previous iteration value
-                self.write_op(OpCode::Pop, cspan);
+                self.write_op_u16(OpCode::PopMany, 2, cspan);
 
                 // compile body
                 self.compile_block(&body)?;
@@ -554,8 +582,7 @@ impl<Data> Compiler<Data> {
                 self.set_variable(varname, *nspan);
 
                 // reserve two stack slots for the loop context and the iteration value
-                self.reserve_temp_local_space();
-                self.reserve_temp_local_space();
+                self.reserve_temp_local_space(2);
 
                 // push a new loop context (keeps track of the current iteration)
                 self.write_op(OpCode::NewLoopCtx, *span);
@@ -570,28 +597,16 @@ impl<Data> Compiler<Data> {
                 self.write_u16(data_offset as u16, *span);
                 self.set_variable(varname, *nspan);
 
-                self.write_op(OpCode::Pop, *span);
-                self.write_op(OpCode::Pop, *span);
+                self.write_op_u16(OpCode::PopMany, 2, *span);
 
                 // compile body
                 self.compile_block(&body)?;
-
-                // pop off last value
-                // self.write_op(OpCode::Pop, *span);
 
                 self.write_jump_backward(start, *nspan)?;
                 // account for extra 2 op slots for the iternext
                 self.patch_jump_ex(exit, 2, *nspan)?;
 
                 self.exit_scope(span);
-
-                // pop none and return value
-                // self.write_op(OpCode::Swap, *span);
-                // self.write_op(OpCode::Pop, *span);
-                // self.write_op(OpCode::Swap, *span);
-                // self.write_op(OpCode::Pop, *span);
-                // self.write_op(OpCode::Swap, *span);
-                // self.write_op(OpCode::Pop, *span);
             }
 
             Expr::Binary(operand, lhs, rhs) => {
@@ -683,8 +698,10 @@ impl<Data> Compiler<Data> {
     }
 
     #[inline]
-    fn reserve_temp_local_space(&mut self) {
-        self.define_local("", true)
+    fn reserve_temp_local_space(&mut self, space: usize) {
+        for _ in 0..space {
+            self.define_local("", true)
+        }
     }
     // todo: remove unused span and error
     fn define_local(&mut self, name: &str, cleanup: bool) {
