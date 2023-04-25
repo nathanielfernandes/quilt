@@ -33,8 +33,8 @@ pub enum Error {
     #[error("BuiltinError: {0}")]
     BuiltinError(BuiltinError),
 
-    #[error("ImportError: {0}")]
-    ImportError(ImportError),
+    #[error("IncludeError: {0}")]
+    IncludeError(IncludeError),
 
     #[error("SyntaxError: {0}")]
     SyntaxError(SyntaxError),
@@ -71,7 +71,7 @@ impl NamedError for Error {
             Error::OverflowError(e) => e.name(),
             Error::TypeError(e) => e.name(),
             Error::BuiltinError(e) => e.name(),
-            Error::ImportError(e) => e.name(),
+            Error::IncludeError(e) => e.name(),
             Error::SyntaxError(e) => e.name(),
             Error::CompileError(e) => e.name(),
             Error::Halt => "Halt",
@@ -194,27 +194,27 @@ impl NamedError for OverflowError {
 }
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
-pub enum ImportError {
-    #[error("imports can only be at the top level of a file")]
-    ImportNotTopLevel,
+pub enum IncludeError {
+    #[error("includes can only be at the top level of a file")]
+    IncludeNotTopLevel,
 
-    #[error("unresolved import: {0:?}")]
-    UnresolvedImport(String),
+    #[error("unresolved include: {0:?}")]
+    UnresolvedInclude(String),
 
-    #[error("could not resolve import: {0:?}")]
+    #[error("could not resolve include: {0:?}")]
     CouldNotResolve(String),
 
-    #[error("circular import: {0:?}")]
-    CircularImport(String),
+    #[error("circular include: {0:?}")]
+    CircularInclude(String),
 }
 
-impl NamedError for ImportError {
+impl NamedError for IncludeError {
     fn name(&self) -> &'static str {
         match self {
-            ImportError::ImportNotTopLevel => "ImportNotTopLevel",
-            ImportError::UnresolvedImport(_) => "UnresolvedImport",
-            ImportError::CouldNotResolve(_) => "CouldNotResolve",
-            ImportError::CircularImport(_) => "CircularImport",
+            Self::IncludeNotTopLevel => "IncludeNotTopLevel",
+            Self::UnresolvedInclude(_) => "UnresolvedInclude",
+            Self::CouldNotResolve(_) => "CouldNotResolve",
+            Self::CircularInclude(_) => "CircularInclude",
         }
     }
 }
@@ -269,7 +269,7 @@ impl_from_error!(
     OverflowError,
     TypeError,
     BuiltinError,
-    ImportError,
+    IncludeError,
     SyntaxError,
     CompileError
 );

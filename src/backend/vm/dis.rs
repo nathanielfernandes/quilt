@@ -244,34 +244,6 @@ impl<'a, Data> Disassembler<'a, Data> {
                     .push_str(&format!("\t{}\n", jump_offset.to_string().green(),));
             }
 
-            // OpCode::StackAlloc => {
-            //     let alloc_count = chunk.ops.read_u16(*offset);
-            //     *offset += 2;
-
-            //     self.output
-            //         .push_str(&format!("\t{}\n", alloc_count.to_string().green(),));
-            // }
-
-            // OpCode::StackFree => {
-            //     let free_count = chunk.ops.read_u16(*offset);
-            //     *offset += 2;
-
-            //     self.output
-            //         .push_str(&format!("\t{}\n", free_count.to_string().green(),));
-            // }
-
-            // OpCode::MakeFunction => {
-            //     let func_offset = chunk.ops.read_u16(*offset);
-            //     *offset += 2;
-
-            //     let func = chunk.get_constant(func_offset);
-
-            //     self.output.push_str(&format!(
-            //         "\t{} ({})\n",
-            //         func_offset.to_string().green(),
-            //         func.display().cyan(),
-            //     ));
-            // }
             _ => {
                 self.output.push_str("\n");
             }

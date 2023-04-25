@@ -81,7 +81,7 @@ impl SourceCache {
         id
     }
 
-    pub fn parse_with_imports<R: ImportResolver>(
+    pub fn parse_with_includes<R: IncludeResolver>(
         &mut self,
         name: &str,
         src: &str,
@@ -91,7 +91,7 @@ impl SourceCache {
 
         match parse_code(src, id) {
             Ok(mut ast) => {
-                self.resolve_imports(&mut ast, resolver)?;
+                self.resolve_includes(&mut ast, resolver)?;
                 Ok(ast)
             }
             Err(e) => {
@@ -112,28 +112,28 @@ impl SourceCache {
         }
     }
 
-    pub fn resolve_imports<R: ImportResolver>(
+    pub fn resolve_includes<R: IncludeResolver>(
         &mut self,
         ast: &mut AST,
         resolver: &mut R,
     ) -> Result<(), ErrorS> {
         for (expr, _) in ast.iter_mut() {
             match expr {
-                Expr::Import((path, span), body) => {
+                Expr::Include((path, span), body) => {
                     if self.resolved.contains(path) {
                         Err((
-                            ImportError::CircularImport(path.clone()).into(),
+                            IncludeError::CircularInclude(path.clone()).into(),
                             span.clone(),
                         ))?;
                     }
 
                     self.resolved.insert(path.clone());
 
-                    let mut imported_ast = resolver.resolve(self, (&path, span.clone()))?;
+                    let mut included_ast = resolver.resolve(self, (&path, span.clone()))?;
 
-                    self.resolve_imports(&mut imported_ast, resolver)?;
+                    self.resolve_includes(&mut included_ast, resolver)?;
 
-                    *body = Some(imported_ast);
+                    *body = Some(included_ast);
                 }
                 _ => {}
             }

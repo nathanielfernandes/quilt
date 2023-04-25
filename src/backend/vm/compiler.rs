@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{
     backend::utils::pool::Pool,
     prelude::{
-        BuiltinFnMap, BuiltinListFn, CompileError, ErrorS, Expr, ImportError, Op, OverflowError,
+        BuiltinFnMap, BuiltinListFn, CompileError, ErrorS, Expr, IncludeError, Op, OverflowError,
         ParserValue, Span, Spanned,
     },
 };
@@ -343,9 +343,9 @@ impl<Data> Compiler<Data> {
                     }
                 }
             }
-            Expr::Import((name, span), body) => {
+            Expr::Include((name, span), body) => {
                 if self.level.scope_depth > 0 {
-                    return Err((ImportError::ImportNotTopLevel.into(), *span));
+                    return Err((IncludeError::IncludeNotTopLevel.into(), *span));
                 }
 
                 match body {
@@ -356,7 +356,7 @@ impl<Data> Compiler<Data> {
                     }
                     None => {
                         return Err((
-                            ImportError::UnresolvedImport(name.to_string()).into(),
+                            IncludeError::UnresolvedInclude(name.to_string()).into(),
                             *span,
                         ))
                     }
@@ -727,24 +727,6 @@ impl<Data> Compiler<Data> {
 
             _ => Err((CompileError::StatementAsExpression.into(), *span))?,
         }
-
-        // if pop
-        //     && match expr {
-        //         // Expr::Assignment(_, _) => false,
-        //         Expr::Declaration(_, _) => false,
-        //         Expr::MultiDeclaration(_, _) => false,
-        //         Expr::MultiForLoop(_, _, _) => false,
-        //         Expr::Function(_, _, _) => false,
-        //         Expr::ForLoop(_, _, _) => false,
-        //         Expr::Import(_, _) => false,
-        //         Expr::Conditional(_, _, _) => false,
-        //         Expr::ContextWrapped(_, _, _, _) => false,
-
-        //         _ => true,
-        //     }
-        // {
-        //     self.write_op(OpCode::Pop, *span);
-        // }
 
         Ok(())
     }

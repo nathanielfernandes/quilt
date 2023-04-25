@@ -133,8 +133,8 @@ impl Expr {
 
             //     s
             // }
-            Expr::Import(path, _) => {
-                format!("{} {}", "import".purple(), path.0.green().to_string())
+            Expr::Include(path, _) => {
+                format!("{} {}", "include".purple(), path.0.green().to_string())
             }
             Expr::Pair(left, right) => format!(
                 "{}{}, {}{}",

@@ -21,7 +21,7 @@ use crate::shared::{ParserValue, Span, Spanned};
 /// * `Range`: A range, holds the start and end of the range as [`Spanned`] expressions
 /// * `ForLoop`: A for loop, holds the name of the variable as a [`String`], the iterable as a [`Spanned`] expression, and the body as a [`Vec`] of [`Spanned`] expressions
 
-/// * `Import`: An import, holds the name of the module as a [`String`]
+/// * `Include`: An include, holds the name of the module as a [`String`]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal(ParserValue),
@@ -61,7 +61,7 @@ pub enum Expr {
     MultiForLoop(Vec<Spanned<String>>, Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
     WhileLoop(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
 
-    Import(Spanned<String>, Option<Vec<Spanned<Expr>>>),
+    Include(Spanned<String>, Option<Vec<Spanned<Expr>>>),
 }
 
 /// A type that represents an operator in Quilt
@@ -219,7 +219,7 @@ peg::parser!(
             --
             KW("with") _ "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" n:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block() { Expr::ContextWrapped(i, args, n, body) }
             --
-            KW("import") _ s:spanned(<STRING()>) { Expr::Import(s, None) }
+            KW("include") _ s:spanned(<STRING()>) { Expr::Include(s, None) }
             --
             s:INT() _ ":" _ e:INT() { Expr::Literal(ParserValue::Range(s, e)) }
             x:(@) _ ":" _ y:@ { Expr::Range(Box::new(x), Box::new(y)) }
@@ -332,7 +332,7 @@ pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
             | Expr::Assignment(_, _)
             | Expr::MultiDeclaration(_, _)
             | Expr::Function(_, _, _)
-            // | Expr::Import(_, _)
+            // | Expr::Include(_, _)
             
              => {
                 body.push((Expr::Literal(ParserValue::None), span));
