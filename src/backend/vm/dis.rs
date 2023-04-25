@@ -153,7 +153,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                         .global_symbols
                         .get(local_offset as usize)
                         .cloned()
-                        .unwrap_or("unknown???".to_string()),
+                        .unwrap_or("unknown".to_string()),
 
                     _ => chunk.force_symbol(local_offset).to_string(),
                 };
@@ -198,7 +198,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                     .push_str(&format!("\t{}\n", upvalue_offset.to_string().green(),));
             }
 
-            OpCode::CallFunction | OpCode::Unpack | OpCode::CreateArray => {
+            OpCode::CallFunction | OpCode::Unpack | OpCode::CreateArray | OpCode::LoadNoneMany => {
                 let arg_count = chunk.ops.read_u8(*offset);
                 *offset += 1;
 

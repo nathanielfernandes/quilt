@@ -144,7 +144,7 @@ impl Expr {
                 bracket(")", br_depth)
             ),
             Expr::Ident(ident) => ident.red().to_string(),
-            Expr::Yoink(ident) => format!("{}{}", "$".purple(), ident.red().to_string()),
+            // Expr::Yoink(ident) => format!("{}{}", "$".purple(), ident.red().to_string()),
             Expr::Declaration(name, value) => format!(
                 "{} {} = {}",
                 "let".purple(),

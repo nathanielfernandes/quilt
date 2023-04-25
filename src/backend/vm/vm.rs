@@ -84,8 +84,7 @@ where
                 return Err(self.error(OverflowError::InstructionOverflow.into()));
             }
 
-            let op = self.read_u8();
-
+            // let op = self.read_u8();
             // println!(
             //     "stack [{}]",
             //     &self.stack[self.frame.st..self.sp]
@@ -97,14 +96,17 @@ where
             // println!("{:?} ", OpCode::from(op));
 
             #[allow(non_upper_case_globals)]
-            match op {
+            match self.read_u8() {
                 Halt => {
-                    println!("Halt");
-                    break;
+                    return Err(self.error_1(Error::Halt));
                 }
-
                 LoadNone => {
                     self.push(Value::None)?;
+                }
+
+                LoadNoneMany => {
+                    let count = self.read_u8();
+                    self.push_many(count as usize)?;
                 }
 
                 Return => {
@@ -120,7 +122,7 @@ where
                     //     self.stack[i] = Value::None;
                     // }
 
-                    println!("sp: {}", self.sp);
+                    // println!("sp: {}", self.sp);
                     self.sp = self.frame.st;
 
                     self.data.on_exit_function();
@@ -150,6 +152,16 @@ where
                 }
 
                 Pop => {
+                    self.pop()?;
+                }
+
+                Swap => {
+                    // swaps the top 2 values on the stack
+                    self.swap()?;
+                }
+
+                SwapPop => {
+                    self.swap()?;
                     self.pop()?;
                 }
 
@@ -296,7 +308,7 @@ where
 
                 Unpack => {
                     let argc = self.read_u8();
-                    let value = self.pop_swap()?;
+                    let value = self.pop_swap_out()?;
                     match (&value, argc) {
                         (Value::Pair(pair), 2) => {
                             let (a, b) = (**pair).clone();
@@ -563,11 +575,6 @@ where
                     }
                 }
 
-                Swap => {
-                    // swaps the top 2 values on the stack
-                    self.swap()?;
-                }
-
                 NewLoopCtx => {
                     self.push(Value::__LoopCtx(0))?;
                 }
@@ -757,7 +764,7 @@ where
             // print!("\n")
         }
 
-        Ok(Value::None)
+        // Ok(Value::None)
     }
 
     #[inline]
@@ -854,6 +861,17 @@ where
     }
 
     #[inline]
+    fn push_many(&mut self, n: usize) -> Result<(), ErrorS> {
+        if self.sp + n >= SS {
+            return Err(self.error(OverflowError::StackOverflow.into()));
+        }
+
+        self.sp += n;
+
+        Ok(())
+    }
+
+    #[inline]
     fn pop(&mut self) -> Result<&Value, ErrorS> {
         if self.sp == 0 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
@@ -877,7 +895,7 @@ where
     }
 
     #[inline]
-    pub fn pop_swap(&mut self) -> Result<Value, ErrorS> {
+    pub fn pop_swap_out(&mut self) -> Result<Value, ErrorS> {
         if self.sp == 0 {
             return Err(self.error(OverflowError::StackUnderflow.into()));
         }
@@ -958,404 +976,6 @@ where
     fn get_constant(&self, idx: u16) -> &Value {
         &self.frame.closure.function.chunk.constants[idx as usize]
     }
-
-    // #[inline]
-    // fn read_symbol(&mut self) -> &str {
-    //     let idx = self.read_u16();
-    //     &self.frame.closure.function.chunk.symbols[idx as usize]
-    // }
-
-    // #[inline]
-    // fn get_symbol(&self, idx: u16) -> &str {
-    //     &self.frame.closure.function.chunk.symbols[idx as usize]
-    // }
-
-    // pub fn profile(
-    //     &mut self,
-    // ) -> Result<(Value, FxHashMap<u8, (usize, std::time::Duration)>), ErrorS> {
-    //     let mut profile: FxHashMap<u8, (usize, std::time::Duration)> = FxHashMap::default();
-    //     let mut return_value = Value::None;
-    //     loop {
-    //         if self.frame.ip >= self.frame.closure.function.chunk.len() {
-    //             return Err(self.error(OverflowError::InstructionOverflow.into()));
-    //         }
-
-    //         let op = self.read_u8();
-
-    //         let start = std::time::Instant::now();
-
-    //         #[allow(non_upper_case_globals)]
-    //         match op {
-    //             Halt => {
-    //                 println!("Halt");
-    //                 break;
-    //             }
-
-    //             Return => {
-    //                 let result = self.pop()?.clone();
-    //                 self.close_upvalues(self.frame.st);
-
-    //                 // clean up stack
-    //                 // for i in self.frame.st..self.sp {
-    //                 //     self.stack[i] = Value::None;
-    //                 // }
-    //                 self.sp = self.frame.st;
-
-    //                 // self.stack.truncate(self.frame.st);
-
-    //                 match self.frames.pop() {
-    //                     Some(frame) => {
-    //                         self.frame = frame;
-    //                         self.push(result)?;
-    //                     }
-    //                     None => {
-    //                         return_value = result;
-    //                         break;
-    //                     }
-    //                 }
-    //             }
-
-    //             Pop => {
-    //                 self.pop()?;
-    //             }
-
-    //             LoadConst => {
-    //                 let constant = self.read_constant().clone();
-    //                 self.push(constant)?;
-    //             }
-
-    //             LoadLocal => {
-    //                 let idx = self.read_u16() as usize;
-    //                 let value = &self.stack[self.frame.st + idx];
-    //                 self.push(value.clone())?;
-    //             }
-
-    //             SetLocal => {
-    //                 let idx = self.read_u16() as usize;
-    //                 let value = self.peek(0)?;
-
-    //                 self.stack[self.frame.st + idx] = value.clone();
-    //             }
-
-    //             LoadGlobal => {
-    //                 let name = self.read_symbol().to_string();
-
-    //                 match self.globals.get(&name) {
-    //                     Some(value) => self.push(value.clone())?,
-    //                     None => return Err(self.error(NameError::Undefined(name).into())),
-    //                 }
-    //             }
-
-    //             DefineGlobal => {
-    //                 let name = self.read_symbol().to_string();
-    //                 let value = self.pop()?.clone();
-    //                 self.globals.insert(name, value);
-    //             }
-
-    //             SetGlobal => {
-    //                 let name = self.read_symbol().to_string();
-    //                 let value = self.peek(0)?.clone();
-
-    //                 match self.globals.entry(name) {
-    //                     Entry::Occupied(mut entry) => {
-    //                         entry.insert(value);
-    //                     }
-    //                     Entry::Vacant(entry) => Err({
-    //                         let span = self.frame.closure.function.chunk.get_span(self.frame.ip);
-    //                         (NameError::Undefined(entry.key().to_string()).into(), span)
-    //                     })?,
-    //                 }
-    //             }
-
-    //             LoadUpvalue => {
-    //                 let idx = self.read_u16() as usize;
-    //                 let upvalue = &self.frame.closure.upvalues[idx];
-    //                 let value = upvalue.get(&self.stack);
-    //                 self.push(value)?;
-    //             }
-
-    //             CloseUpvalue => {
-    //                 self.close_upvalues(self.sp - 1);
-    //                 self.pop()?;
-    //             }
-
-    //             CreateFunction => {
-    //                 let value = self.read_constant().clone();
-    //                 let function = match value {
-    //                     Value::Function(function) => function,
-    //                     _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
-    //                 };
-    //                 self.push(Value::Function(function))?;
-    //             }
-
-    //             CreateClosure => {
-    //                 let value = self.read_constant().clone();
-    //                 let function = match value {
-    //                     Value::Function(function) => function,
-    //                     _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
-    //                 };
-    //                 let mut upvalues = Vec::with_capacity(function.upvalue_count as usize);
-
-    //                 for _ in 0..function.upvalue_count {
-    //                     let is_local = self.read_u8();
-    //                     let index = self.read_u16() as usize;
-
-    //                     let upvalue: Upvalue = if is_local != 0 {
-    //                         self.capture_upvalue(self.frame.st + index)
-    //                     } else {
-    //                         self.frame.closure.upvalues[index].clone()
-    //                     };
-
-    //                     upvalues.push(upvalue);
-    //                 }
-
-    //                 let closure = Closure { function, upvalues };
-    //                 self.push(Value::Closure(Rc::new(closure)))?;
-    //             }
-
-    //             CallFunction => {
-    //                 let argc = self.read_u8();
-    //                 let value = self.peek(argc as usize)?.clone();
-
-    //                 if self.frames.len() >= CSS {
-    //                     return Err(self.error(OverflowError::StackOverflow.into()));
-    //                 }
-
-    //                 match value {
-    //                     Value::Closure(closure) => {
-    //                         if argc != closure.function.arity {
-    //                             Err(self.error(
-    //                                 TypeError::MismatchedArity {
-    //                                     name: closure.function.name.0.clone(),
-    //                                     expected: closure.function.arity,
-    //                                     got: argc,
-    //                                 }
-    //                                 .into(),
-    //                             ))?;
-    //                         }
-
-    //                         let frame = CallFrame {
-    //                             closure,
-    //                             ip: 0,
-    //                             st: self.sp - argc as usize - 1,
-    //                         };
-
-    //                         unsafe {
-    //                             self.frames
-    //                                 .push_unchecked(std::mem::replace(&mut self.frame, frame))
-    //                         }
-    //                     }
-    //                     Value::Function(function) => {
-    //                         if argc != function.arity {
-    //                             Err(self.error(
-    //                                 TypeError::MismatchedArity {
-    //                                     name: function.name.0.clone(),
-    //                                     expected: function.arity,
-    //                                     got: argc,
-    //                                 }
-    //                                 .into(),
-    //                             ))?;
-    //                         }
-
-    //                         let closure = Closure {
-    //                             function,
-    //                             upvalues: Vec::new(),
-    //                         };
-
-    //                         let frame = CallFrame {
-    //                             closure: Rc::new(closure),
-    //                             ip: 0,
-    //                             st: self.sp - argc as usize - 1,
-    //                         };
-
-    //                         unsafe {
-    //                             self.frames
-    //                                 .push_unchecked(std::mem::replace(&mut self.frame, frame))
-    //                         }
-    //                     }
-
-    //                     _ => Err(self.error(TypeError::NotCallable(value.ntype()).into()))?,
-    //                 }
-    //             }
-
-    //             Jump => {
-    //                 let offset = self.read_u16() as usize;
-    //                 self.frame.ip += offset;
-    //             }
-    //             JumpIfFalse => {
-    //                 let offset = self.read_u16() as usize;
-    //                 let value = self.peek(0)?;
-
-    //                 if !value.is_truthy().map_err(|e| self.error_1(e))? {
-    //                     self.frame.ip += offset;
-    //                 }
-    //             }
-
-    //             UnaryNegate => {
-    //                 let value = self.pop()?.negate().map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             UnaryNot => {
-    //                 let value = self.pop()?.not().map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             // UnarySpread => {
-    //             //     let value = self.pop()?.spread().map_err(|e| self.error_1(e))?;
-    //             //     self.push(value)?;
-    //             // }
-    //             BinaryAdd => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.add(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinarySubtract => {
-    //                 let value = {
-    //                     let rhs = &self.stack[self.sp - 1];
-    //                     let lhs = &self.stack[self.sp - 2];
-
-    //                     lhs.subtract(rhs).map_err(|e| self.error_1(e))?
-    //                 };
-
-    //                 self.weak_pop(2)?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryMultiply => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.multiply(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryDivide => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.divide(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryModulo => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.modulo(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryPower => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.power(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryEqual => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.equal(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryNotEqual => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.not_equal(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryLess => {
-    //                 let value = {
-    //                     let rhs = &self.stack[self.sp - 1];
-    //                     let lhs = &self.stack[self.sp - 2];
-
-    //                     lhs.less_than(rhs).map_err(|e| self.error_1(e))?
-    //                 };
-
-    //                 self.weak_pop(2)?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryLessEqual => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.less_than_or_equal(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryGreater => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.greater_than(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryGreaterEqual => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs
-    //                     .greater_than_or_equal(&rhs)
-    //                     .map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryAnd => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.and(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryOr => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.or(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             BinaryJoin => {
-    //                 let rhs = self.pop()?;
-    //                 let lhs = self.pop()?;
-
-    //                 let value = lhs.join(&rhs).map_err(|e| self.error_1(e))?;
-    //                 self.push(value)?;
-    //             }
-
-    //             op => {
-    //                 unimplemented!("Opcode: {:?}", OpCode::from(op));
-    //             }
-    //         }
-
-    //         let elapsed = start.elapsed();
-
-    //         match profile.entry(op) {
-    //             Entry::Occupied(entry) => {
-    //                 let (c, time) = entry.into_mut();
-    //                 *time += elapsed;
-    //                 *c += 1
-    //             }
-    //             Entry::Vacant(entry) => {
-    //                 entry.insert((1, elapsed));
-    //             }
-    //         }
-    //     }
-
-    //     Ok((return_value, profile))
-    // }
 }
 
 pub struct CallFrame {

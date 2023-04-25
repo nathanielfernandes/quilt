@@ -29,7 +29,7 @@ pub enum Expr {
     Pair(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 
     Ident(String),
-    Yoink(String),
+    // Yoink(String),
     Declaration(Spanned<String>, Box<Spanned<Expr>>),
     MultiDeclaration(Vec<Spanned<String>>, Box<Spanned<Expr>>),
     Assignment(Spanned<String>, Box<Spanned<Expr>>),
@@ -135,6 +135,7 @@ peg::parser!(
         rule __ = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT() )+ }
 
         rule COMMASEP<T>(x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ** ",") ","? _ {v}
+        rule COMMASEPP<T>(x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ++ ",") ","? _ {v}
 
         rule KW(id: &str) = ##parse_string_literal(id) !['0'..='9' | 'a'..='z' | 'A'..='Z' | '_'] _ { () }
 
@@ -176,38 +177,51 @@ peg::parser!(
         / KW("none") { ParserValue::None }
         / h:HEX() { ParserValue::Color(h) }
         / f:FLOAT() { ParserValue::Float(f) }
-        // / s:INT() _ ":" _ e:INT() { Value::Range(s, e) }
+        // / s:INT() _ ":" _ e:INT() { ParserValue::Range(s, e) }
         / i:INT() { ParserValue::Int(i) }
         / s:STRING() { ParserValue::Str(s) }
         / "(" _ h:literal() _ "," _ t:literal() _ ")" { ParserValue::Pair(Box::new(h), Box::new(t)) }
         / "[" _ e:COMMASEP(<literal()>) _ "]" { ParserValue::Array(e) }
+
+        rule _elif() -> Vec<Spanned<Expr>>
+        = s:position!() _ code:if_condition()  _ e:position!() { vec![(code, Span(s, e, src_id) )] }
+
+        rule else_elif() -> Vec<Spanned<Expr>>
+        = KW("else") _ res:(block() / _elif()) { res }
+
+        rule if_condition() -> Expr
+        = _ KW("if") _ e:expr() _  then:block() _ KW("else") _ otherwise:(else_elif())? _ {
+            Expr::Conditional(Box::new(e), then, otherwise)
+        }
 
         rule expr() -> Spanned<Expr>
         = precedence! {
             start:position!() e:(@) end:position!() { (e, Span(start, end, src_id)) }
             --
             KW("let") _ i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Declaration(i, Box::new(e)) }
-            KW("let") _ "[" _ i:COMMASEP(<spanned(<IDENT()>)>) _ "]" _ "=" _ e:@  { Expr::MultiDeclaration(i, Box::new(e)) }
-            KW("let") _ "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ "=" _ e:@  { Expr::MultiDeclaration(vec![left, right], Box::new(e)) }
+            KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Expr::MultiDeclaration(i, Box::new(e)) }
+            // KW("let") _ "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ "=" _ e:@  { Expr::MultiDeclaration(vec![left, right], Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Expr::Assignment(i, Box::new(e)) }
             --
             KW("fn") _ i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ start:position!() body:block() end:position!(){
                 Expr::Function(i, args, body)
             }
             --
-            KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
+            // KW("if")  _ cond:expr() _ body:block() _ then:(KW("else") _ then:block() {then})? { Expr::Conditional(Box::new(cond), body, then) }
+            conditional:if_condition() { conditional }
             --
             // KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ start:expr() _ ":" _ end:expr() _ body:block() { Expr::RangeLoop(i, Box::new(start), Box::new(end), body) }
 
             KW("while") _ cond:expr() _ body:block() { Expr::WhileLoop(Box::new(cond), body) }
             KW("for") _ i:spanned(<IDENT()>) _ KW("in") _ iterable:expr() _ body:block() { Expr::ForLoop(i, Box::new(iterable), body) }
-            KW("for") _ "[" _ i:COMMASEP(<spanned(<IDENT()>)>) _ "]" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(i, Box::new(iterable), body) }
-            KW("for") _  "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(vec![left, right], Box::new(iterable), body) }
+            KW("for") _ i:COMMASEPP(<spanned(<IDENT()>)>) _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(i, Box::new(iterable), body) }
+            // KW("for") _  "(" _ left:spanned(<IDENT()>) _ "," _ right:spanned(<IDENT()>) _ ")" _ KW("in") _ iterable:expr() _ body:block() { Expr::MultiForLoop(vec![left, right], Box::new(iterable), body) }
             --
             KW("with") _ "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" n:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block() { Expr::ContextWrapped(i, args, n, body) }
             --
             KW("import") _ s:spanned(<STRING()>) { Expr::Import(s, None) }
             --
+            s:INT() _ ":" _ e:INT() { Expr::Literal(ParserValue::Range(s, e)) }
             x:(@) _ ":" _ y:@ { Expr::Range(Box::new(x), Box::new(y)) }
             --
             x:(@) _ "&&" _ y:@ { Expr::Binary(Op::And, Box::new(x), Box::new(y)) }
@@ -241,7 +255,7 @@ peg::parser!(
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Expr::Literal(ParserValue::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::BuiltinCall(i, args) }
             i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<expr()>) _ ")" { Expr::Call(i, args) }
-            "$" i:IDENT() { Expr::Yoink(i) }
+            // "$" i:IDENT() { Expr::Yoink(i) }
             i:IDENT() { Expr::Ident(i) }
             "(" _ e:expr() _ ")" { e.0 }
             b:block() { Expr::Block(b) }

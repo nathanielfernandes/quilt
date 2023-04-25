@@ -41,6 +41,9 @@ pub enum Error {
 
     #[error("CompileError: {0}")]
     CompileError(CompileError),
+
+    #[error("Halt")]
+    Halt,
 }
 
 impl ErrorExt for ErrorS {
@@ -71,6 +74,7 @@ impl NamedError for Error {
             Error::ImportError(e) => e.name(),
             Error::SyntaxError(e) => e.name(),
             Error::CompileError(e) => e.name(),
+            Error::Halt => "Halt",
         }
     }
 }

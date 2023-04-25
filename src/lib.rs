@@ -1,6 +1,4 @@
 pub mod builtins;
-pub mod debug;
-
 pub mod std;
 
 pub mod backend;
@@ -18,8 +16,6 @@ pub mod prelude {
     pub use crate::specific_builtins;
 
     pub use paste::paste;
-
-    pub use crate::debug::*;
 
     pub use crate::code::*;
     pub use crate::frontend::*;

@@ -4,7 +4,7 @@ use crate::{
     backend::utils::pool::Pool,
     prelude::{
         BuiltinFnMap, BuiltinListFn, CompileError, ErrorS, Expr, ImportError, Op, OverflowError,
-        Span, Spanned,
+        ParserValue, Span, Spanned,
     },
 };
 
@@ -196,6 +196,7 @@ impl<Data> Compiler<Data> {
                     } else if pop_queue == 1 {
                         self.write_op(OpCode::Pop, *span);
                     }
+                    pop_queue = 0;
                 }
 
                 self.write_op(op, *span);
@@ -331,13 +332,14 @@ impl<Data> Compiler<Data> {
 
                 self.write_op_u8(OpCode::Unpack, arity, span);
 
-                for (name, span) in names {
-                    if self.is_global() {
+                if self.is_global() {
+                    for (name, span) in names.iter() {
                         let offset = self.add_global_symbol(name.to_string());
                         self.write_op_u16(OpCode::DefineGlobal, offset, *span);
-                    } else {
+                    }
+                } else {
+                    for (name, _) in names.iter().rev() {
                         self.define_local(&name, true);
-                        self.set_variable(&name, *span);
                     }
                 }
             }
@@ -576,17 +578,14 @@ impl<Data> Compiler<Data> {
             Expr::ForLoop((varname, nspan), iterable, body) => {
                 self.enter_scope();
 
-                // initial loop value
-                self.write_op(OpCode::LoadNone, *span);
-                self.define_local(varname, true);
-                self.set_variable(varname, *nspan);
-
                 // reserve two stack slots for the loop context and the iteration value
                 self.reserve_temp_local_space(2);
 
                 // push a new loop context (keeps track of the current iteration)
                 self.write_op(OpCode::NewLoopCtx, *span);
                 self.compile_expr(&iterable)?;
+
+                self.enter_scope();
 
                 self.write_op(OpCode::LoadNone, *span);
                 let start = self.level.function.chunk.len();
@@ -595,16 +594,72 @@ impl<Data> Compiler<Data> {
                 let data_offset = self.level.locals.len() - 2;
                 let exit = self.write_jump(OpCode::IterNext, *span);
                 self.write_u16(data_offset as u16, *span);
-                self.set_variable(varname, *nspan);
 
-                self.write_op_u16(OpCode::PopMany, 2, *span);
+                // pop off default none
+                self.write_op(OpCode::SwapPop, *span);
+
+                self.define_local(varname, true);
+                // self.set_variable(varname, *nspan);
 
                 // compile body
-                self.compile_block(&body)?;
+                self.compile_stmnts(&body)?;
+
+                self.exit_scope(span);
 
                 self.write_jump_backward(start, *nspan)?;
                 // account for extra 2 op slots for the iternext
                 self.patch_jump_ex(exit, 2, *nspan)?;
+
+                self.exit_scope(span);
+            }
+
+            Expr::MultiForLoop(varnames, iterable, body) => {
+                self.enter_scope();
+
+                let len = varnames.len();
+                if len > u8::MAX as usize {
+                    return Err((OverflowError::TooMuchToUnpack.into(), *span));
+                }
+                let arity: u8 = len as u8;
+
+                // reserve two stack slots for the loop context and the iteration value
+                self.reserve_temp_local_space(2);
+
+                // push a new loop context (keeps track of the current iteration)
+                self.write_op(OpCode::NewLoopCtx, *span);
+                self.compile_expr(&iterable)?;
+
+                self.enter_scope();
+                // push a default return value
+                self.write_op(OpCode::LoadNone, *span);
+
+                let start = self.level.function.chunk.len();
+
+                // IterNext takes (end jump u16) and assumes the loop context is on top of the stack
+                let data_offset = self.level.locals.len() - 2;
+                let exit = self.write_jump(OpCode::IterNext, *span);
+                self.write_u16(data_offset as u16, *span);
+
+                // pop default return
+                self.write_op(OpCode::SwapPop, *span);
+
+                self.write_op_u8(OpCode::Unpack, arity, iterable.1);
+                for (varname, _) in varnames.iter().rev() {
+                    self.define_local(varname, true);
+                    // self.set_variable_ex(varname, i as u16, 0, *span);
+                }
+
+                // compile body
+                self.compile_stmnts(&body)?;
+
+                self.exit_scope(span);
+
+                self.write_jump_backward(start, *span)?;
+                // account for extra 2 op slots for the iternext
+                self.patch_jump_ex(exit, 2, *span)?;
+
+                // pop off the loop context
+                // self.write_op_u16(OpCode::PopMany, 2, *span);
 
                 self.exit_scope(span);
             }
@@ -638,16 +693,35 @@ impl<Data> Compiler<Data> {
             }
 
             Expr::Unary(operand, rhs) => {
-                self.compile_expr(rhs)?;
-
-                let opcode = match operand {
-                    Op::Not => OpCode::UnaryNot,
-                    Op::Neg => OpCode::UnaryNegate,
-                    Op::Spread => OpCode::UnarySpread,
-                    _ => unreachable!("binary op in unary expr"),
+                let opt = match (operand, &rhs.0) {
+                    (Op::Neg, Expr::Literal(lit)) => match lit {
+                        ParserValue::Int(n) => Some(ParserValue::Int(-n)),
+                        ParserValue::Float(n) => Some(ParserValue::Float(-n)),
+                        _ => None,
+                    },
+                    (Op::Not, Expr::Literal(lit)) => match lit {
+                        ParserValue::Bool(b) => Some(ParserValue::Bool(!b)),
+                        _ => None,
+                    },
+                    _ => None,
                 };
 
-                self.write_op(opcode, *span);
+                if let Some(lit) = opt {
+                    let offset = self.add_constant(lit.into());
+                    self.write_op_u16(OpCode::LoadConst, offset, *span);
+                } else {
+                    self.compile_expr(rhs)?;
+
+                    let opcode = match operand {
+                        Op::Not => OpCode::UnaryNot,
+                        Op::Neg => OpCode::UnaryNegate,
+                        Op::Spread => OpCode::UnarySpread,
+                        _ => unreachable!("binary op in unary expr"),
+                    };
+
+                    self.write_op(opcode, *span);
+                }
+
                 // self.if_pop(pop, *span);
             }
 
@@ -696,6 +770,18 @@ impl<Data> Compiler<Data> {
             self.write_op_u16(OpCode::SetGlobal, offset, span);
         }
     }
+
+    // fn set_variable_ex(&mut self, name: &str, sub: u16, add: u16, span: Span) {
+    //     if let Some(local_idx) = self.level.resolve_local(name, false) {
+    //         println!("{} {} {} {}", name, local_idx, sub, add);
+    //         self.write_op_u16(OpCode::SetLocal, local_idx - sub + add, span);
+    //     } else if let Some(upvalue_idx) = self.level.resolve_upvalue(name) {
+    //         self.write_op_u16(OpCode::SetUpvalue, upvalue_idx - sub + add, span);
+    //     } else {
+    //         let offset = self.add_global_symbol(name.to_string());
+    //         self.write_op_u16(OpCode::SetGlobal, offset, span);
+    //     }
+    // }
 
     #[inline]
     fn reserve_temp_local_space(&mut self, space: usize) {

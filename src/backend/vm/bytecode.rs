@@ -20,6 +20,7 @@ gen_bytecode!(
     Pop,
     PopMany, // u16
     Swap,
+    SwapPop,
     LoadConst, // u16
     LoadLocal, // u16
     SetLocal,  // u16
@@ -45,6 +46,7 @@ gen_bytecode!(
     JumpBackward, // u16
     Unpack,       // u8
     LoadNone,
+    LoadNoneMany, // u8
     NewLoopCtx,
     // gets a value from an iterable and pushes it to the stack
     // if the iterable is exhausted, jumps to the end of the loop
