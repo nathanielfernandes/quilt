@@ -54,6 +54,9 @@ let res = while (i = i + 1) < 10 {
 
 // for loops
 for i in 0:10 {
+    for j in [1, 2, 3, i] {
+        @print(i, j)
+    }
     @print(i)
 }
 
