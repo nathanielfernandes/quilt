@@ -1,86 +1,114 @@
-use crate::shared::{RuntimeError, Span, Spanned, Value};
-use ariadne::Color;
-use colored::Colorize;
+use crate::{
+    prelude::Value,
+    shared::{BuiltinError, Span, Spanned},
+};
+
 use fxhash::FxHashMap;
+
+pub trait VmData {
+    fn on_enter_function(&mut self) {}
+    fn on_exit_function(&mut self) {}
+}
+
+macro_rules! impl_vmdata {
+    ($($t:ty),*) => {
+        $(
+            impl VmData for $t {}
+        )*
+    };
+}
+
+impl_vmdata!(
+    (),
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize
+);
 
 /// a type alias representing args passed to a builtin function
 pub type BuiltinArgs = Spanned<Vec<Spanned<Value>>>;
 
 /// a type alias representing a builtin function
-pub type BuiltinFnReg<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, RuntimeError>;
+pub type BuiltinFnReg<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, BuiltinError>;
 
+pub type ContextEntry<Data> = BuiltinFnReg<Data>;
+pub type ContextExit<Data> = fn(&mut Data) -> Result<(), BuiltinError>;
 pub enum BuiltinFn<Data> {
     /// a builtin function that takes a [`BuiltinArgs`] and returns a [`Value`]
     Fn(BuiltinFnReg<Data>),
-    Context(BuiltinFnReg<Data>, BuiltinFnReg<Data>),
+    Context(ContextEntry<Data>, ContextExit<Data>),
 }
 
 /// a type alias representing a map of builtin functions
-pub type BuiltinFnMap<Data> = FxHashMap<String, BuiltinFn<Data>>;
+pub type BuiltinFnMap<Data> = FxHashMap<u16, BuiltinFn<Data>>;
 
-/// a type alias representing a function that adds builtin functions to a map
-pub type BuiltinAdder<Data> = fn(&mut BuiltinFnMap<Data>);
+pub type BuiltinList<Data> = Vec<(String, BuiltinFn<Data>)>;
+
+pub type BuiltinListFn<Data> = fn() -> BuiltinList<Data>;
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
-    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, RuntimeError>;
-    fn stop(&mut self) -> Result<(), RuntimeError>;
+    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, BuiltinError>;
+    fn stop(&mut self) -> Result<(), BuiltinError>;
 
-    fn int(&mut self) -> Result<i32, RuntimeError>;
-    fn u8(&mut self) -> Result<u8, RuntimeError>;
-    fn bool(&mut self) -> Result<bool, RuntimeError>;
-    fn float(&mut self) -> Result<f32, RuntimeError>;
-    fn num(&mut self) -> Result<f32, RuntimeError>;
-    fn str(&mut self) -> Result<String, RuntimeError>;
-    fn color(&mut self) -> Result<[u8; 4], RuntimeError>;
-    fn list(&mut self) -> Result<Vec<Value>, RuntimeError>;
-    fn pair(&mut self) -> Result<(Value, Value), RuntimeError>;
-    fn rest(&mut self) -> Result<Vec<Value>, RuntimeError>;
-    fn any(&mut self) -> Result<Value, RuntimeError>;
+    fn int(&mut self) -> Result<i32, BuiltinError>;
+    fn u8(&mut self) -> Result<u8, BuiltinError>;
+    fn bool(&mut self) -> Result<bool, BuiltinError>;
+    fn float(&mut self) -> Result<f32, BuiltinError>;
+    fn num(&mut self) -> Result<f32, BuiltinError>;
+    fn str(&mut self) -> Result<String, BuiltinError>;
+    fn color(&mut self) -> Result<[u8; 4], BuiltinError>;
+    fn list(&mut self) -> Result<Vec<Value>, BuiltinError>;
+    fn pair(&mut self) -> Result<(Value, Value), BuiltinError>;
+    fn rest(&mut self) -> Result<Vec<Value>, BuiltinError>;
+    fn any(&mut self) -> Result<Value, BuiltinError>;
 
-    fn special(&mut self, id: &str) -> Result<usize, RuntimeError>;
+    fn special(&mut self, id: &str) -> Result<usize, BuiltinError>;
 }
 
 /// helper function to create a [`RuntimeError`] for when an unexpected value is encountered
-pub fn expected(got: &str, expected: &str, span: Span) -> RuntimeError {
-    RuntimeError {
-        msg: format!("expected {}, got {}", expected.cyan(), got.cyan())
-            .yellow()
-            .to_string(),
+pub fn expected(got: &str, expected: &str, span: Span) -> BuiltinError {
+    BuiltinError {
+        msg: format!("expected `{}`, got `{}`", expected, got),
         span,
         help: None,
-        color: Some(Color::Yellow),
     }
 }
 
 impl Consumable for BuiltinArgs {
-    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, RuntimeError> {
+    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, BuiltinError> {
         if self.0.len() != 0 {
             Ok(self.0.remove(0))
         } else {
-            Err(RuntimeError {
+            Err(BuiltinError {
                 msg: format!(
                     "too litte arguments supplied to builtin, expected {}",
                     expected
-                )
-                .red()
-                .to_string(),
+                ),
                 span: self.1.clone(),
                 help: None,
-                color: None,
             })
         }
     }
 
-    fn special(&mut self, id: &str) -> Result<usize, RuntimeError> {
+    fn special(&mut self, id: &str) -> Result<usize, BuiltinError> {
         let (value, span) = self.consume(id)?;
 
         match value {
-            Value::Special(sid, value) => {
-                if id == sid {
-                    Ok(value)
+            Value::Special(special) => {
+                if id == special.0 {
+                    Ok(special.1)
                 } else {
-                    Err(expected(sid, id, span))
+                    Err(expected(special.0, id, span))
                 }
             }
             _ => Err(expected(value.ntype(), id, span)),
@@ -88,7 +116,7 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consumes the next argument as an integer, errors if the next argument is not an integer
-    fn int(&mut self) -> Result<i32, RuntimeError> {
+    fn int(&mut self) -> Result<i32, BuiltinError> {
         let (value, span) = self.consume("int")?;
         match value {
             Value::Int(i) => Ok(i),
@@ -98,7 +126,7 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consumes the next argument as a float or int, errors if the next argument is not a float or int
-    fn num(&mut self) -> Result<f32, RuntimeError> {
+    fn num(&mut self) -> Result<f32, BuiltinError> {
         let (value, span) = self.consume("num")?;
         match value {
             Value::Int(i) => Ok(i as f32),
@@ -110,7 +138,7 @@ impl Consumable for BuiltinArgs {
     /// consumes the next argument as a u8 value, errors if the next argument is not a u8
     ///
     /// if the next argument is a float, it will be clamped to the range [0, 255] and rounded
-    fn u8(&mut self) -> Result<u8, RuntimeError> {
+    fn u8(&mut self) -> Result<u8, BuiltinError> {
         let (value, span) = self.consume("u8")?;
         match value {
             Value::Int(i) => Ok(i.min(255).max(0) as u8),
@@ -120,7 +148,7 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consumes the next argument as a bool value, errors if the next argument is not a bool
-    fn bool(&mut self) -> Result<bool, RuntimeError> {
+    fn bool(&mut self) -> Result<bool, BuiltinError> {
         let (value, span) = self.consume("bool")?;
         match value {
             Value::Bool(b) => Ok(b),
@@ -129,7 +157,7 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consume the next argument as a float, errors if the next argument cannot be a float
-    fn float(&mut self) -> Result<f32, RuntimeError> {
+    fn float(&mut self) -> Result<f32, BuiltinError> {
         let (value, span) = self.consume("float")?;
         match value {
             Value::Int(i) => Ok(i as f32),
@@ -139,16 +167,16 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consumes the next argument as a string, errors if the next argument is not a string
-    fn str(&mut self) -> Result<String, RuntimeError> {
+    fn str(&mut self) -> Result<String, BuiltinError> {
         let (value, span) = self.consume("str")?;
         match value {
-            Value::Str(s) => Ok(s),
+            Value::String(s) => Ok(s.to_string()),
             _ => Err(expected(value.ntype(), "str", span)),
         }
     }
 
     /// consumes the next argument as a color, errors if the next argument is not a color
-    fn color(&mut self) -> Result<[u8; 4], RuntimeError> {
+    fn color(&mut self) -> Result<[u8; 4], BuiltinError> {
         let (value, span) = self.consume("color")?;
         match value {
             Value::Color(c) => Ok(c),
@@ -157,39 +185,36 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consumes the next argument as a list, errors if the next argument is not a list
-    fn list(&mut self) -> Result<Vec<Value>, RuntimeError> {
+    fn list(&mut self) -> Result<Vec<Value>, BuiltinError> {
         let (value, span) = self.consume("list")?;
         match value {
-            Value::List(l) => Ok(l),
-            Value::Pair(l, r) => Ok(vec![*l, *r]),
+            Value::Array(l) => Ok((*l).clone()),
+            Value::Pair(pair) => Ok(vec![pair.0.clone(), pair.1.clone()]),
             _ => Err(expected(value.ntype(), "list", span)),
         }
     }
 
-    fn pair(&mut self) -> Result<(Value, Value), RuntimeError> {
+    fn pair(&mut self) -> Result<(Value, Value), BuiltinError> {
         let (value, span) = self.consume("pair")?;
         match value {
-            Value::Pair(l, r) => Ok((*l, *r)),
+            Value::Pair(pair) => Ok((pair.0.clone(), pair.1.clone())),
             _ => Err(expected(value.ntype(), "pair", span)),
         }
     }
 
     /// consumes the rest of the arguments as a list
-    fn rest(&mut self) -> Result<Vec<Value>, RuntimeError> {
+    fn rest(&mut self) -> Result<Vec<Value>, BuiltinError> {
         Ok(self.0.drain(..).map(|(v, _)| v).collect())
     }
 
     /// errors if there are any arguments left
-    fn stop(&mut self) -> Result<(), RuntimeError> {
+    fn stop(&mut self) -> Result<(), BuiltinError> {
         if self.0.len() != 0 {
             let item = self.0.remove(0);
-            Err(RuntimeError {
-                msg: format!("too many arguments, got extra {}", item.0.ntype().cyan())
-                    .yellow()
-                    .to_string(),
+            Err(BuiltinError {
+                msg: format!("too many arguments, got extra {}", item.0.ntype()).to_string(),
                 span: item.1,
                 help: None,
-                color: Some(Color::Yellow),
             })
         } else {
             Ok(())
@@ -197,7 +222,7 @@ impl Consumable for BuiltinArgs {
     }
 
     /// consumes the next argument as a any value, errors if there are no arguments left
-    fn any(&mut self) -> Result<Value, RuntimeError> {
+    fn any(&mut self) -> Result<Value, BuiltinError> {
         let (value, _) = self.consume("any")?;
         Ok(value)
     }
@@ -213,17 +238,16 @@ macro_rules! generic_builtins {
     } => {
 
            $(
-                pub fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<Value, RuntimeError> {
+                pub fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<crate::prelude::Value, BuiltinError> {
                         use crate::builtins::Consumable;
 
                         #[allow(unused_macros)]
                         macro_rules! error {
                             ($msg:expr) => {
-                                Err(RuntimeError {
+                                Err(BuiltinError {
                                     msg: $msg,
                                     span: args.1.clone(),
                                     help: None,
-                                    color: None,
                                 })
                             };
                         }
@@ -237,10 +261,12 @@ macro_rules! generic_builtins {
                 }
            )*
 
-            pub fn $group<Data>(map: &mut fxhash::FxHashMap<String, crate::builtins::BuiltinFn<Data>>) {
-                $(
-                    map.insert(String::from(stringify!($name)), crate::builtins::BuiltinFn::Fn($name));
-                )*
+            pub fn $group<Data>() -> crate::builtins::BuiltinList<Data> {
+                vec![
+                    $(
+                        (String::from(stringify!($name)), crate::builtins::BuiltinFn::Fn($name)),
+                    )*
+                ]
             }
     };
 }
@@ -261,16 +287,15 @@ macro_rules! specific_builtins {
 
            $(
                $(#[doc = $doc])*
-               pub fn $name($data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, RuntimeError> {
+               pub fn $name($data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, BuiltinError> {
 
                     #[allow(unused_macros)]
                     macro_rules! error {
                         ($msg:expr) => {
-                            Err(RuntimeError {
+                            Err(BuiltinError {
                                 msg: $msg,
                                 span: args.1.clone(),
                                 help: None,
-                                color: None,
                             })
                         };
                     }
@@ -278,11 +303,10 @@ macro_rules! specific_builtins {
                     #[allow(unused_macros)]
                     macro_rules! err {
                         ($msg:expr) => {
-                            RuntimeError {
+                            BuiltinError {
                                 msg: $msg,
                                 span: args.1.clone(),
                                 help: None,
-                                color: None,
                             }
                         };
                     }
@@ -296,11 +320,13 @@ macro_rules! specific_builtins {
                }
            )*
 
-           pub fn $group(map: &mut fxhash::FxHashMap<String, BuiltinFn<$datatype>>) {
-               $(
-                   map.insert(String::from(stringify!($name)), BuiltinFn::Fn($name));
-               )*
-           }
+           pub fn $group() -> BuiltinList<$datatype> {
+                vec![
+                    $(
+                        (String::from(stringify!($name)), BuiltinFn::Fn($name)),
+                    )*
+                ]
+            }
 
            paste! {
                pub fn [< $group _doc >]<S: AsRef<str>>(fn_name: S) -> Option<&'static str> {
@@ -323,35 +349,31 @@ macro_rules! context_builtins {
         $(
 
             {
-
                 [enter]
                 $(#[doc = $start_doc:expr])*
                 fn @$start_name:ident($start_data:ident, $($arg:ident: $type:ident),*) $start_body:block
 
                 [exit]
                 $(#[doc = $end_doc:expr])*
-                fn @$end_name:ident($end_data:ident, $end_arg:ident: $end_type:ident) $end_body:block
-
-
+                fn @$end_name:ident($end_data:ident) $end_body:block
             }
 
         )*
     } => {
-            use crate::prelude::*;
+            use quilt::prelude::*;
 
            $(
 
                 $(#[doc = $start_doc])*
-                pub fn $start_name($start_data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, RuntimeError> {
+                pub fn $start_name($start_data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, BuiltinError> {
 
                     #[allow(unused_macros)]
                     macro_rules! error {
                         ($msg:expr) => {
-                            Err(RuntimeError {
+                            Err(BuiltinError {
                                 msg: $msg,
                                 span: args.1.clone(),
                                 help: None,
-                                color: None,
                             })?
                         };
                     }
@@ -365,31 +387,26 @@ macro_rules! context_builtins {
                 }
 
                 $(#[doc = $end_doc])*
-                pub fn $end_name($end_data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, RuntimeError> {
-
+                pub fn $end_name($end_data: &mut $datatype) -> Result<(), BuiltinError> {
                     #[allow(unused_macros)]
                     macro_rules! error {
                         ($msg:expr) => {
-                            Err(RuntimeError {
+                            Err(BuiltinError {
                                 msg: $msg,
                                 span: args.1.clone(),
                                 help: None,
-                                color: None,
                             })?
                         };
                     }
-
-                   let $end_arg = args.$end_type()?;
-
-                   args.stop()?;
-                   Ok($end_body)
+                    $end_body
+                    Ok(())
                 }
            )*
 
-           pub fn $group(map: &mut fxhash::FxHashMap<String, BuiltinFn<$datatype>>) {
-               $(
-                   map.insert(String::from(stringify!($start_name)), BuiltinFn::Context($start_name, $end_name));
-               )*
+           pub fn $group() -> BuiltinList<$datatype> {
+                vec![  $(
+                    (String::from(stringify!($start_name)), BuiltinFn::Context($start_name, $end_name)),
+               )*]
            }
 
            paste! {

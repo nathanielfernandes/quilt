@@ -4,7 +4,7 @@ pub mod value;
 pub use error::*;
 pub use value::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Span(
     /// The start of the span
     pub usize,

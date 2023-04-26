@@ -56,6 +56,18 @@ impl SourceCache {
         }
     }
 
+    pub fn get_lineno(&self, span: &Span) -> Option<usize> {
+        self.sources
+            .get(span.2)
+            .map(|src| {
+                if src.source.len() == 0 {
+                    return None;
+                }
+                src.source.get_offset_line(span.0).map(|(_, l, _)| l + 1)
+            })
+            .flatten()
+    }
+
     pub fn get(&self, id: usize) -> Option<&Src> {
         self.sources.get(id)
     }
@@ -69,57 +81,59 @@ impl SourceCache {
         id
     }
 
-    pub fn parse_with_imports<R: ImportResolver>(
+    pub fn parse_with_includes<R: IncludeResolver>(
         &mut self,
         name: &str,
         src: &str,
         resolver: &mut R,
-    ) -> Result<AST, Spanned<String>> {
+    ) -> Result<AST, ErrorS> {
         let id = self.add(name.to_string(), src);
 
         match parse_code(src, id) {
             Ok(mut ast) => {
-                self.resolve_imports(&mut ast, resolver)?;
+                self.resolve_includes(&mut ast, resolver)?;
                 Ok(ast)
             }
             Err(e) => {
                 let line = e.location.line;
-                let col = e.location.column;
+                let column = e.location.column;
                 let offset = e.location.offset;
 
                 Err((
-                    format!(
-                        "Parse error at line {}, column {}: expected {}",
-                        line, col, e.expected
-                    ),
+                    SyntaxError::UnexpectedToken {
+                        line,
+                        column,
+                        expected: e.expected,
+                    }
+                    .into(),
                     Span(offset, offset, id),
                 ))
             }
         }
     }
 
-    pub fn resolve_imports<R: ImportResolver>(
+    pub fn resolve_includes<R: IncludeResolver>(
         &mut self,
         ast: &mut AST,
         resolver: &mut R,
-    ) -> Result<(), Spanned<String>> {
+    ) -> Result<(), ErrorS> {
         for (expr, _) in ast.iter_mut() {
             match expr {
-                Expr::Import((path, span), block) => {
+                Expr::Include((path, span), body) => {
                     if self.resolved.contains(path) {
                         Err((
-                            format!("Duplicate or Circular import: {}", path),
+                            IncludeError::CircularInclude(path.clone()).into(),
                             span.clone(),
                         ))?;
                     }
 
                     self.resolved.insert(path.clone());
 
-                    let mut imported_ast = resolver.resolve(self, (&path, span.clone()))?;
+                    let mut included_ast = resolver.resolve(self, (&path, span.clone()))?;
 
-                    self.resolve_imports(&mut imported_ast, resolver)?;
+                    self.resolve_includes(&mut included_ast, resolver)?;
 
-                    *block = Some(imported_ast);
+                    *body = Some(included_ast);
                 }
                 _ => {}
             }

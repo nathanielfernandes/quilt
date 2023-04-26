@@ -1,14 +1,11 @@
 pub mod builtins;
-pub mod debug;
-
 pub mod std;
 
 pub mod backend;
 pub mod code;
 pub mod frontend;
-pub mod imports;
+pub mod includes;
 pub mod shared;
-pub mod treewalk;
 
 /// The prelude module contains all the functions and types that are available to use.
 pub mod prelude {
@@ -20,14 +17,13 @@ pub mod prelude {
 
     pub use paste::paste;
 
-    pub use crate::debug::*;
-
     pub use crate::code::*;
     pub use crate::frontend::*;
-    pub use crate::imports::*;
+    pub use crate::includes::*;
     pub use crate::shared::*;
     pub use crate::std::*;
-    pub use crate::treewalk::*;
+    // pub use crate::treewalk::*;
+    pub use crate::backend::vm::value::*;
 
     pub use self::parser::parser::parse_code;
 }
