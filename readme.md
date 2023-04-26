@@ -11,8 +11,9 @@
 
 
 ## About
-Quilt is a hobby project of mine. I designed it to be a simple, with a syntax similar to rust and python. I needed a language that I could use within my own projects that could be easily embedded and extended. I also wanted to learn more about how to build a programming language.
+Quilt is a hobby project of mine. I designed it to be a simple, with a syntax similar to rust and python. I needed a language that I could use within my own projects that could be easily embedded and extended. I also wanted to learn more about how to build a programming language. 
 
+[crafting interpreters](https://craftinginterpreters.com/a-bytecode-virtual-machine.html) was a great resource during the development of the backend.
 
 ## Features
 - Dynamically typed
