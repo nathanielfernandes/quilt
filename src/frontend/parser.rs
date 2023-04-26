@@ -190,7 +190,7 @@ peg::parser!(
         = KW("else") _ res:(block() / _elif()) { res }
 
         rule if_condition() -> Expr
-        = _ KW("if") _ e:expr() _  then:block() _ KW("else") _ otherwise:(else_elif())? _ {
+        = _ KW("if") _ e:expr() _  then:block() _ otherwise:(else_elif())? _ {
             Expr::Conditional(Box::new(e), then, otherwise)
         }
 
@@ -266,7 +266,7 @@ peg::parser!(
             let mut code = code;
             fix_return((&mut code, Span(s, e, src_id)));
             code
-        
+
         }
 
         rule parse() -> Spanned<Expr>
@@ -332,15 +332,11 @@ pub fn fix_return((body, span): Spanned<&mut Vec<Spanned<Expr>>>) {
             | Expr::Assignment(_, _)
             | Expr::MultiDeclaration(_, _)
             | Expr::Function(_, _, _)
-            // | Expr::Include(_, _)
-            
-             => {
+            | Expr::Include(_, _) => {
                 body.push((Expr::Literal(ParserValue::None), span));
             }
 
-            _ => {
-
-            }
+            _ => {}
         }
     }
 }

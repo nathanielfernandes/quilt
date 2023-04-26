@@ -123,16 +123,19 @@ where
                     // }
 
                     // println!("sp: {}", self.sp);
-                    self.sp = self.frame.st;
 
                     self.data.on_exit_function();
 
                     match self.frames.pop() {
                         Some(frame) => {
+                            self.sp = self.frame.st;
                             self.frame = frame;
                             self.push(result)?;
                         }
                         None => {
+                            debug_assert!(self.sp == 0, "sp: {}, stack not empty!", self.sp);
+
+                            self.sp = self.frame.st;
                             return Ok(result);
                         }
                     }
@@ -863,7 +866,7 @@ where
     #[inline]
     fn push_many(&mut self, n: usize) -> Result<(), ErrorS> {
         if self.sp + n >= SS {
-            return Err(self.error(OverflowError::StackOverflow.into()));
+            return Err(self.error_1(OverflowError::StackOverflow.into()));
         }
 
         self.sp += n;
@@ -874,7 +877,7 @@ where
     #[inline]
     fn pop(&mut self) -> Result<&Value, ErrorS> {
         if self.sp == 0 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
+            return Err(self.error_1(OverflowError::StackUnderflow.into()));
         }
         self.sp -= 1;
 
@@ -887,7 +890,7 @@ where
     #[inline]
     fn pop_many(&mut self, n: usize) -> Result<(), ErrorS> {
         if self.sp < n {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
+            return Err(self.error_1(OverflowError::StackUnderflow.into()));
         }
         self.sp -= n;
 

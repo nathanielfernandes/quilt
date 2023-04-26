@@ -11,9 +11,10 @@ use super::{
 
 pub struct Disassembler<'a, Data> {
     pub src: &'a SourceCache,
-
     pub entry: &'a Script<Data>,
 
+    // keeps track of jumps to show on the dissasembly output
+    jump_stack: Vec<usize>,
     output: String,
 }
 
@@ -23,6 +24,7 @@ impl<'a, Data> Disassembler<'a, Data> {
             src,
             entry,
             output: String::new(),
+            jump_stack: Vec::new(),
         }
     }
 
@@ -91,6 +93,13 @@ impl<'a, Data> Disassembler<'a, Data> {
         while offset < chunk.ops.len() {
             let span = chunk.spans[offset];
             if let Some(line) = self.src.get_lineno(&span) {
+                let mut arrow = "  ";
+
+                if let Some(pos) = self.jump_stack.iter().position(|&x| x == offset) {
+                    self.jump_stack.remove(pos);
+                    arrow = ">>";
+                }
+
                 // line number
                 if last_line != line {
                     if last_line != 0 {
@@ -98,9 +107,13 @@ impl<'a, Data> Disassembler<'a, Data> {
                     }
 
                     self.output
-                        .push_str(&format!("{}\t", line.to_string().red()));
+                        .push_str(&format!("{}\t{}  ", line.to_string().red(), arrow.red()));
                 } else {
-                    self.output.push_str("\t");
+                    self.output.push_str(&format!(
+                        "{}\t{}  ",
+                        " ".repeat(last_line.to_string().len()),
+                        arrow.red()
+                    ));
                 }
 
                 last_line = line;
@@ -124,6 +137,54 @@ impl<'a, Data> Disassembler<'a, Data> {
             .push_str(&format!("{: <15}", format!("{:?}", op)).blue().to_string());
 
         match op {
+            OpCode::LoadNone => {
+                self.output
+                    .push_str(format!("\t    ({})\n", "none".cyan()).as_str());
+            }
+
+            OpCode::BinaryAdd
+            | OpCode::BinarySubtract
+            | OpCode::BinaryMultiply
+            | OpCode::BinaryDivide
+            | OpCode::BinaryModulo
+            | OpCode::BinaryPower
+            | OpCode::BinaryEqual
+            | OpCode::BinaryNotEqual
+            | OpCode::BinaryLess
+            | OpCode::BinaryLessEqual
+            | OpCode::BinaryGreater
+            | OpCode::BinaryGreaterEqual
+            | OpCode::BinaryAnd
+            | OpCode::BinaryOr
+            | OpCode::BinaryJoin
+            | OpCode::UnaryNegate
+            | OpCode::UnaryNot
+            | OpCode::UnarySpread => {
+                let op = match op {
+                    OpCode::BinaryAdd => "+",
+                    OpCode::BinarySubtract => "-",
+                    OpCode::BinaryMultiply => "*",
+                    OpCode::BinaryDivide => "/",
+                    OpCode::BinaryModulo => "%",
+                    OpCode::BinaryPower => "**",
+                    OpCode::BinaryEqual => "==",
+                    OpCode::BinaryNotEqual => "!=",
+                    OpCode::BinaryLess => "<",
+                    OpCode::BinaryLessEqual => "<=",
+                    OpCode::BinaryGreater => ">",
+                    OpCode::BinaryGreaterEqual => ">=",
+                    OpCode::BinaryAnd => "&&",
+                    OpCode::BinaryOr => "||",
+                    OpCode::BinaryJoin => "..",
+                    OpCode::UnaryNegate => "-",
+                    OpCode::UnaryNot => "!",
+                    OpCode::UnarySpread => "...",
+                    _ => unreachable!(),
+                };
+
+                self.output.push_str(&format!("\t    ({})\n", op));
+            }
+
             OpCode::LoadConst | OpCode::CreateFunction => {
                 let const_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
@@ -190,7 +251,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                 }
             }
 
-            OpCode::LoadUpvalue | OpCode::SetUpvalue => {
+            OpCode::LoadUpvalue | OpCode::SetUpvalue | OpCode::PopMany => {
                 let upvalue_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 
@@ -228,20 +289,34 @@ impl<'a, Data> Disassembler<'a, Data> {
                 ));
             }
 
-            OpCode::JumpIfFalse
-            | OpCode::JumpForward
-            | OpCode::JumpBackward
-            | OpCode::IterNext
-            | OpCode::PopMany => {
+            OpCode::JumpIfFalse | OpCode::JumpForward | OpCode::JumpBackward | OpCode::IterNext => {
                 let jump_offset = chunk.ops.read_u16(*offset);
+
                 *offset += 2;
 
                 if let OpCode::IterNext = op {
                     *offset += 2;
                 }
 
-                self.output
-                    .push_str(&format!("\t{}\n", jump_offset.to_string().green(),));
+                let jump_addr = if let OpCode::JumpBackward = op {
+                    *offset - jump_offset as usize
+                } else {
+                    jump_offset as usize + *offset
+                };
+
+                self.jump_stack.push(jump_addr);
+
+                let jump = if jump_addr < *offset {
+                    format!(">> {}", jump_addr).cyan()
+                } else {
+                    format!(">> {}", jump_addr).red()
+                };
+
+                self.output.push_str(&format!(
+                    "\t{: <3} {}\n",
+                    jump_offset.to_string().green(),
+                    jump
+                ));
             }
 
             _ => {

@@ -514,7 +514,7 @@ impl<Data> Compiler<Data> {
             }
 
             Expr::Conditional(condition, then, otherwise) => {
-                // push none in case loop does not run at all (loops are expressions)
+                // push none in case then oes not run at all
                 self.write_op(OpCode::LoadNone, *span);
 
                 self.compile_expr(condition)?;
@@ -544,9 +544,6 @@ impl<Data> Compiler<Data> {
                 }
 
                 self.patch_jump(end_jump, *span)?;
-
-                // self.write_op(OpCode::Pop, *span);
-                // self.if_pop(pop, *span);
             }
 
             Expr::WhileLoop(cond, body) => {
