@@ -24,6 +24,13 @@ Quilt is a hobby project of mine. I designed it to be a simple, with a syntax si
 - Python style dissasembler
 <!-- - No garbage collection (yet..., for now all data is immutable, so it can be reference counted) -->
 
+## Roadmap
+- Spread operator
+- Short circuiting
+- `break` and `continue` statements
+- `return` statements
+- user created errors and error handling
+- repl
 
 ## Examples
 ```rust
@@ -102,6 +109,9 @@ fib(30)
 ```
 ![disassembler](assets/fib_dis.png)
 
+
+## Installation
+coming soon...
 
 ## Benchmarks
 coming soon...
