@@ -13,6 +13,7 @@ pub type ValueType = &'static str;
 pub trait ErrorExt {
     fn report(&self) -> Report<Span>;
     fn print(&self, sources: SourceCache) -> std::io::Result<()>;
+    fn to_string(self, cache: SourceCache) -> Result<String, std::io::Error>;
 }
 
 pub trait NamedError {
@@ -42,6 +43,9 @@ pub enum Error {
     #[error("CompileError: {0}")]
     CompileError(CompileError),
 
+    #[error("Division by zero")]
+    ZeroDivisionError,
+
     #[error("Halt")]
     Halt,
 }
@@ -62,6 +66,21 @@ impl ErrorExt for ErrorS {
     fn print(&self, sources: SourceCache) -> std::io::Result<()> {
         self.report().print(sources)
     }
+
+    fn to_string(self, cache: SourceCache) -> Result<String, std::io::Error> {
+        let mut buf = vec![];
+        let cursor = Cursor::new(&mut buf);
+        self.report().write(cache, cursor)?;
+
+        if let Ok(s) = String::from_utf8(buf) {
+            Ok(s)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Could not convert to string",
+            ))
+        }
+    }
 }
 
 impl NamedError for Error {
@@ -74,6 +93,7 @@ impl NamedError for Error {
             Error::IncludeError(e) => e.name(),
             Error::SyntaxError(e) => e.name(),
             Error::CompileError(e) => e.name(),
+            Error::ZeroDivisionError => "ZeroDivisionError",
             Error::Halt => "Halt",
         }
     }

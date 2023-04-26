@@ -138,6 +138,9 @@ impl Value {
 
     #[inline]
     pub fn divide(&self, other: &Value) -> Result<Value, Error> {
+        if other == &Value::Int(0) || other == &Value::Float(0.0) {
+            return Err(Error::ZeroDivisionError);
+        }
         match (self, other) {
             (Value::String(lhs), Value::String(rhs)) => {
                 Ok(Value::String(Rc::new(lhs.replace(&**rhs, ""))))
@@ -163,6 +166,9 @@ impl Value {
 
     #[inline]
     pub fn modulo(&self, other: &Value) -> Result<Value, Error> {
+        if other == &Value::Int(0) || other == &Value::Float(0.0) {
+            return Err(Error::ZeroDivisionError);
+        }
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs % rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs % rhs)),
