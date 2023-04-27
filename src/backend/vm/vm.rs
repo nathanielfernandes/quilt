@@ -582,9 +582,11 @@ where
                     self.push(Value::__LoopCtx(0))?;
                 }
 
+                // stack[sp-3] contains loop ctx
+                // stack[sp-2] contains iterable
+                // stack[sp-1] contains previous loop iteration's value
                 IterNext => {
                     let exit_offset = self.read_u16() as usize;
-                    let data_offset = self.read_u16() as usize;
 
                     // let s = self.stack[0..self.sp]
                     //     .iter()
@@ -596,7 +598,7 @@ where
 
                     // println!("stack: {}",
                     let loop_idx = {
-                        let value = &self.stack[self.frame.st + data_offset];
+                        let value = &self.stack[self.sp - 3];
                         // println!("iter next: {}", value.display());
                         if let Value::__LoopCtx(loop_idx) = value {
                             *loop_idx
@@ -605,12 +607,12 @@ where
                         }
                     };
 
-                    if let Value::__LoopCtx(loop_idx) = &mut self.stack[self.frame.st + data_offset]
+                    if let Value::__LoopCtx(loop_idx) = &mut self.stack[self.sp - 3]
                     {
                         *loop_idx += 1;
                     }
 
-                    let iterable = &self.stack[self.frame.st + data_offset + 1];
+                    let iterable = &self.stack[self.sp - 2];
                     // println!("iterable: {}", iterable.display());
 
                     let value = match iterable {

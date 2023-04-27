@@ -588,9 +588,7 @@ impl<Data> Compiler<Data> {
                 let start = self.level.function.chunk.len();
 
                 // IterNext takes (end jump u16) and assumes the loop context is on top of the stack
-                let data_offset = self.level.locals.len() - 2;
                 let exit = self.write_jump(OpCode::IterNext, *span);
-                self.write_u16(data_offset as u16, *span);
 
                 // pop off default none
                 self.write_op(OpCode::SwapPop, *span);
@@ -604,8 +602,7 @@ impl<Data> Compiler<Data> {
                 self.exit_scope(span);
 
                 self.write_jump_backward(start, *nspan)?;
-                // account for extra 2 op slots for the iternext
-                self.patch_jump_ex(exit, 2, *nspan)?;
+                self.patch_jump(exit, *nspan)?;
 
                 self.exit_scope(span);
             }
@@ -633,9 +630,7 @@ impl<Data> Compiler<Data> {
                 let start = self.level.function.chunk.len();
 
                 // IterNext takes (end jump u16) and assumes the loop context is on top of the stack
-                let data_offset = self.level.locals.len() - 2;
                 let exit = self.write_jump(OpCode::IterNext, *span);
-                self.write_u16(data_offset as u16, *span);
 
                 // pop default return
                 self.write_op(OpCode::SwapPop, *span);
@@ -652,8 +647,7 @@ impl<Data> Compiler<Data> {
                 self.exit_scope(span);
 
                 self.write_jump_backward(start, *span)?;
-                // account for extra 2 op slots for the iternext
-                self.patch_jump_ex(exit, 2, *span)?;
+                self.patch_jump(exit, *span)?;
 
                 // pop off the loop context
                 // self.write_op_u16(OpCode::PopMany, 2, *span);
