@@ -579,7 +579,7 @@ where
                 }
 
                 NewLoopCtx => {
-                    self.push(Value::__LoopCtx(0))?;
+                    self.push(Value::LoopCtx(0))?;
                 }
 
                 // stack[sp-3] contains loop ctx
@@ -587,30 +587,19 @@ where
                 // stack[sp-1] contains previous loop iteration's value
                 IterNext => {
                     let exit_offset = self.read_u16() as usize;
-
-                    // let s = self.stack[0..self.sp]
-                    //     .iter()
-                    //     .map(|v| v.display())
-                    //     .collect::<Vec<String>>()
-                    //     .join(", ");
-
-                    // println!("stack: [{}]", s);
-
-                    // println!("stack: {}",
                     let loop_idx = {
-                        let value = &self.stack[self.sp - 3];
+                        let value = &mut self.stack[self.sp - 3];
                         // println!("iter next: {}", value.display());
-                        if let Value::__LoopCtx(loop_idx) = value {
-                            *loop_idx
+                        if let Value::LoopCtx(loop_idx) = value {
+                            let idx = *loop_idx;
+
+                            *loop_idx += 1;
+
+                            idx
                         } else {
                             return Err(self.error_1(TypeError::FailedToIterate.into()));
                         }
                     };
-
-                    if let Value::__LoopCtx(loop_idx) = &mut self.stack[self.sp - 3]
-                    {
-                        *loop_idx += 1;
-                    }
 
                     let iterable = &self.stack[self.sp - 2];
                     // println!("iterable: {}", iterable.display());

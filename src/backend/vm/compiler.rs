@@ -120,15 +120,15 @@ impl<Data> Compiler<Data> {
         Ok(())
     }
 
-    #[inline]
-    fn patch_jump_ex(&mut self, offset: usize, extra: u16, span: Span) -> Result<(), ErrorS> {
-        let jump = self.level.function.chunk.ops.len() - 2 - offset;
-        if jump > u16::MAX as usize {
-            return Err((OverflowError::JumpTooLarge.into(), span));
-        }
-        self.patch_u16(offset, jump as u16 - extra);
-        Ok(())
-    }
+    // #[inline]
+    // fn patch_jump_ex(&mut self, offset: usize, extra: u16, span: Span) -> Result<(), ErrorS> {
+    //     let jump = self.level.function.chunk.ops.len() - 2 - offset;
+    //     if jump > u16::MAX as usize {
+    //         return Err((OverflowError::JumpTooLarge.into(), span));
+    //     }
+    //     self.patch_u16(offset, jump as u16 - extra);
+    //     Ok(())
+    // }
 
     #[inline]
     fn add_constant(&mut self, value: Value) -> u16 {
@@ -213,6 +213,10 @@ impl<Data> Compiler<Data> {
     }
 
     pub fn compile(mut self, ast: &Vec<Spanned<Expr>>) -> Result<Script<Data>, ErrorS> {
+        if let Some((_, span)) = ast.first() {
+            self.level.function.name.1 = *span;
+        }
+
         self.compile_stmnts(ast)?;
 
         Ok(Script {
@@ -759,7 +763,9 @@ impl<Data> Compiler<Data> {
     #[inline]
     fn reserve_temp_local_space(&mut self, space: usize) {
         for _ in 0..space {
-            self.define_local("", true)
+            // cannot be accessed by name because of the '#' prefix
+            let name = format!("#__temp_{}", self.level.locals.len());
+            self.define_local(&name, true)
         }
     }
     // todo: remove unused span and error

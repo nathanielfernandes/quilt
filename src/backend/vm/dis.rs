@@ -120,7 +120,7 @@ impl<'a, Data> Disassembler<'a, Data> {
 
                 // offset and op
                 self.output
-                    .push_str(&format!("{:4}", offset.to_string().red()));
+                    .push_str(&format!("{:5}", offset.to_string().red()));
 
                 self.disassemble_instruction(chunk, &mut offset);
             } else {
@@ -139,7 +139,7 @@ impl<'a, Data> Disassembler<'a, Data> {
         match op {
             OpCode::LoadNone => {
                 self.output
-                    .push_str(format!("\t    ({})\n", "none".cyan()).as_str());
+                    .push_str(format!("\t     ({})\n", "none".cyan()).as_str());
             }
 
             OpCode::BinaryAdd
@@ -182,7 +182,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                     _ => unreachable!(),
                 };
 
-                self.output.push_str(&format!("\t    ({})\n", op));
+                self.output.push_str(&format!("\t     ({})\n", op));
             }
 
             OpCode::LoadConst | OpCode::CreateFunction => {
@@ -195,7 +195,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                 };
 
                 self.output.push_str(&format!(
-                    "\t{: <3} ({})\n",
+                    "\t{: <4} ({})\n",
                     const_offset.to_string().green(),
                     constant,
                 ));
@@ -220,7 +220,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                 };
 
                 self.output.push_str(&format!(
-                    "\t{: <3} ({})\n",
+                    "\t{: <4} ({})\n",
                     local_offset.to_string().green(),
                     symbol.cyan(),
                 ));
@@ -275,7 +275,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                 *offset += 1;
 
                 self.output.push_str(&format!(
-                    "\t{: <3} ({})\n",
+                    "\t{: <4} ({})\n",
                     arg_count.to_string().green(),
                     format!(
                         "<builtin @{}>",
@@ -294,9 +294,9 @@ impl<'a, Data> Disassembler<'a, Data> {
 
                 *offset += 2;
 
-                if let OpCode::IterNext = op {
-                    *offset += 2;
-                }
+                // if let OpCode::IterNext = op {
+                //     *offset += 2;
+                // }
 
                 let jump_addr = if let OpCode::JumpBackward = op {
                     *offset - jump_offset as usize
@@ -313,7 +313,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                 };
 
                 self.output.push_str(&format!(
-                    "\t{: <3} {}\n",
+                    "\t{: <4} {}\n",
                     jump_offset.to_string().green(),
                     jump
                 ));

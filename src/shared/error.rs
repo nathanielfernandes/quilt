@@ -241,7 +241,7 @@ impl NamedError for IncludeError {
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum SyntaxError {
-    #[error("unexpected token at line {line}, column {column}, expected one of {expected:?}")]
+    #[error("unexpected token at line {line}, column {column}, expected one of {expected}")]
     UnexpectedToken {
         line: usize,
         column: usize,

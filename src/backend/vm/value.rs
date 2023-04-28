@@ -24,8 +24,8 @@ pub enum Value {
 
     Array(Rc<Vec<Value>>),
 
-    // specialized values for looping
-    __LoopCtx(usize),
+    // specialized value for looping
+    LoopCtx(usize),
 
     Pair(Rc<(Value, Value)>),
     Spread(Rc<Vec<Value>>),
@@ -68,7 +68,7 @@ impl std::fmt::Display for Value {
             Value::Function(func) => write!(f, "<function {}>", func.name.0),
             Value::Closure(closure) => write!(f, "<closure {}>", closure.function.name.0),
 
-            Value::__LoopCtx(idx) => write!(f, "<loop_ctx {}>", idx),
+            Value::LoopCtx(idx) => write!(f, "<loop_ctx {}>", idx),
         }
     }
 }
@@ -90,7 +90,7 @@ impl Value {
             Value::Spread(_) => "spread",
             Value::Function(_) => "function",
             Value::Closure(_) => "closure",
-            Value::__LoopCtx(_) => "loop_ctx",
+            Value::LoopCtx(_) => "loop_ctx",
         }
     }
     pub fn display(&self) -> String {
@@ -125,8 +125,7 @@ impl Value {
                     )
                 }
             }
-
-            Value::Pair(l) => format!("({} {})", l.0.display(), l.1.display()),
+            Value::Pair(l) => format!("({}, {})", l.0.display(), l.1.display()),
             Value::Spread(s) => format!(
                 "...[{}]",
                 s.iter().map(|c| c.display()).collect::<Vec<_>>().join(", ")
@@ -137,7 +136,7 @@ impl Value {
                 .cyan()
                 .to_string(),
 
-            Value::__LoopCtx(idx) => format!("<loop_ctx {}>", idx).cyan().to_string(),
+            Value::LoopCtx(idx) => format!("<loop_ctx {}>", idx).cyan().to_string(),
         }
     }
 }
@@ -163,7 +162,7 @@ impl Hash for Value {
             Value::Spread(s) => s.hash(state),
             Value::Function(f) => f.hash(state),
             Value::Closure(c) => c.hash(state),
-            Value::__LoopCtx(idx) => idx.hash(state),
+            Value::LoopCtx(idx) => idx.hash(state),
         }
     }
 }
