@@ -50,7 +50,7 @@ gen_bytecode!(
     NewLoopCtx,
     // gets a value from an iterable and pushes it to the stack
     // if the iterable is exhausted, jumps to the end of the loop
-    IterNext, // u16 (jump if end), u16 (loopctx index), loopctx+ 1 =  (iterable index)
+    IterNext, // u16 (jump if end)
     UnaryNegate,
     UnaryNot,
     UnarySpread,
