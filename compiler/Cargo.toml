@@ -1,0 +1,13 @@
+[package]
+name = "compiler"
+authors = ["Nathaniel Fernandes <nathaniel.s.fernandes@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common = { path = "../common" }
+bytecode = { path = "../bytecode" }
+parser = { path = "../parser" }
+interpreter = { path = "../interpreter" }

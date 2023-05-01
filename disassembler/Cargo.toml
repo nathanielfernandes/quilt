@@ -1,0 +1,13 @@
+[package]
+name = "disassembler"
+authors = ["Nathaniel Fernandes <nathaniel.s.fernandes@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common = { path = "../common" }
+bytecode = { path = "../bytecode" }
+interpreter = { path = "../interpreter" }
+colored = "2.0.0"
