@@ -1,0 +1,11 @@
+[package]
+name = "bytecode"
+authors = ["Nathaniel Fernandes <nathaniel.s.fernandes@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iota = "0.2.3"
+common = { path = "../common" }

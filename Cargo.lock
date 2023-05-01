@@ -29,6 +29,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytecode"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "iota",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -49,6 +57,35 @@ dependencies = [
  "atty",
  "lazy_static",
  "winapi",
+]
+
+[[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "ariadne",
+ "fxhash",
+ "thiserror",
+]
+
+[[package]]
+name = "compiler"
+version = "0.1.0"
+dependencies = [
+ "bytecode",
+ "common",
+ "interpreter",
+ "parser",
+]
+
+[[package]]
+name = "disassembler"
+version = "0.1.0"
+dependencies = [
+ "bytecode",
+ "colored",
+ "common",
+ "interpreter",
 ]
 
 [[package]]
@@ -81,6 +118,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "interpreter"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "bytecode",
+ "common",
+ "fxhash",
+ "paste",
+ "rand",
+]
+
+[[package]]
+name = "iota"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "680dd6d5502d25bf20a63b093da51b1b2663099dcd7b0fd450cc9e88c9465d4f"
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -93,10 +148,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "201de327520df007757c1f0adce6e827fe8562fbc28bfd9c15571c66ca1f5f79"
 
 [[package]]
+name = "parser"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "fxhash",
+ "peg",
+]
+
+[[package]]
 name = "paste"
-version = "1.0.11"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d01a5bd0424d00070b0098dd17ebca6f961a959dead1dbcbbbc1d1cd8d3deeba"
+checksum = "9f746c4065a8fa3fe23974dd82f15431cc8d40779821001404d10d2e79ca7d79"
 
 [[package]]
 name = "peg"
@@ -144,14 +208,12 @@ dependencies = [
 name = "quilt"
 version = "0.1.1"
 dependencies = [
- "ariadne",
- "arrayvec",
- "colored",
- "fxhash",
- "paste",
- "peg",
- "rand",
- "thiserror",
+ "bytecode",
+ "common",
+ "compiler",
+ "disassembler",
+ "interpreter",
+ "parser",
 ]
 
 [[package]]
