@@ -42,9 +42,6 @@ pub enum Error {
     #[error("SyntaxError: {0}")]
     SyntaxError(SyntaxError),
 
-    #[error("CompileError: {0}")]
-    CompileError(CompileError),
-
     #[error("Division by zero")]
     ZeroDivisionError,
 
@@ -94,7 +91,6 @@ impl NamedError for Error {
             Error::BuiltinError(e) => e.name(),
             Error::IncludeError(e) => e.name(),
             Error::SyntaxError(e) => e.name(),
-            Error::CompileError(e) => e.name(),
             Error::ZeroDivisionError => "ZeroDivisionError",
             Error::Halt => "Halt",
         }
@@ -249,29 +245,20 @@ pub enum SyntaxError {
         column: usize,
         expected: Vec<&'static str>,
     },
+
+    #[error("statement was used in place of expression")]
+    StatementAsExpression,
+
+    #[error("return outside of function")]
+    ReturnOutsideFunction,
 }
 
 impl NamedError for SyntaxError {
     fn name(&self) -> &'static str {
         match self {
             SyntaxError::UnexpectedToken { .. } => "UnexpectedToken",
-        }
-    }
-}
-
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
-pub enum CompileError {
-    // #[error("functions can only be defined at the top level")]
-    // NestedFunction(String),
-    #[error("statements cannot be used as expressions")]
-    StatementAsExpression,
-}
-
-impl NamedError for CompileError {
-    fn name(&self) -> &'static str {
-        match self {
-            // CompileError::NestedFunction(_) => "NestedFunction",
-            CompileError::StatementAsExpression => "StatementAsExpression",
+            SyntaxError::StatementAsExpression => "StatementAsExpression",
+            SyntaxError::ReturnOutsideFunction => "ReturnOutsideFunction",
         }
     }
 }
@@ -292,8 +279,7 @@ impl_from_error!(
     TypeError,
     BuiltinError,
     IncludeError,
-    SyntaxError,
-    CompileError
+    SyntaxError
 );
 
 /// A runtime error.

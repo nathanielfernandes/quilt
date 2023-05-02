@@ -262,6 +262,19 @@ impl Compiler {
         let span = stmnt.1;
 
         match &stmnt.0 {
+            Node::Return(expr) => {
+                if self.level.scope_depth == 0 {
+                    return Err((SyntaxError::ReturnOutsideFunction.into(), span));
+                }
+
+                if let Some(expr) = expr {
+                    self.compile_expr(expr)?;
+                } else {
+                    self.write_op(LoadNone, span);
+                }
+
+                self.write_op(Return, span);
+            }
             Node::Function {
                 name: (name, fn_span),
                 args,
@@ -721,7 +734,7 @@ impl Compiler {
             }
 
             _ => {
-                return Err((CompileError::StatementAsExpression.into(), *span));
+                return Err((SyntaxError::StatementAsExpression.into(), *span));
             }
         }
 
@@ -821,15 +834,10 @@ impl Level {
         self.constant_pool
             .take_inplace(&mut self.function.chunk.constants);
 
-        let last_span = self.function.chunk.last_span();
-
-        // if let Some(last_op) = self.function.chunk.ops.last() {
-        //     if *last_op == Pop {
-        //         self.function.chunk.ops.pop();
-        //     }
-        // }
-
-        self.function.chunk.write_op(Return, last_span);
+        if self.scope_depth == 0 {
+            let last_span = self.function.chunk.last_span();
+            self.function.chunk.write_op(Return, last_span);
+        }
 
         (self.function, self.upvalues)
     }

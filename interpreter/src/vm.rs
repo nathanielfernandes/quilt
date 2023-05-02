@@ -142,10 +142,9 @@ where
 
                     // println!("sp: {}", self.sp);
 
-                    self.data.on_exit_function();
-
                     match self.frames.pop() {
                         Some(frame) => {
+                            self.data.on_exit_function();
                             self.sp = self.frame.st;
                             self.frame = frame;
                             self.push(result)?;

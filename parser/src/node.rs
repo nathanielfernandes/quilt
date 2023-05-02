@@ -51,6 +51,7 @@ pub enum Node {
     },
 
     Include(Spanned<String>, Option<Vec<NodeS>>),
+    Return(Option<Box<NodeS>>),
 }
 
 #[rustfmt::skip]
@@ -75,6 +76,7 @@ impl Node {
             Node::MultiDeclaration(_, _) => NodeType::Statement,
             Node::Function { .. } => NodeType::Statement,
             Node::Include(_, _) => NodeType::Statement,
+            Node::Return(_) => NodeType::Statement,
 
             _ => NodeType::Expression,
         }

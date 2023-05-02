@@ -18,7 +18,7 @@ peg::parser!(
         rule WHITESPACE() = [' ' | '\t' | '\u{09}' | '\u{0B}' | '\u{0C}' | '\u{20}' | '\u{A0}' ] / "\\" TERM()
 
         rule _  = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT())* }
-        rule __ = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT())+ }
+        rule __ = quiet!{ (WHITESPACE() /  COMMENT())+ }
 
         rule COMMASEP<T> (x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ** ",") ","? _ {v}
         rule COMMASEPP<T>(x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ++ ",") ","? _ {v}
@@ -74,10 +74,10 @@ peg::parser!(
         = s:position!() _ code:if_condition()  _ e:position!() { vec![(code, Span(s, e, src_id) )] }
 
         rule else_elif() -> Vec<Spanned<Node>>
-        = KW("else") _ res:(block() / _elif()) { res }
+        = KW("else") _ res:(block(false) / _elif()) { res }
 
         rule if_condition() -> Node
-        = _ KW("if") _ condition:node() _  then:block() _ otherwise:(else_elif())? _ {
+        = _ KW("if") _ condition:node() _  then:block(false) _ otherwise:(else_elif())? _ {
             Node::Conditional {
                 condition: Box::new(condition),
                 then,
@@ -89,11 +89,13 @@ peg::parser!(
         = precedence! {
             start:position!() e:(@) end:position!() { (e, Span(start, end, src_id)) }
             --
+            KW("return") __? e:node()? { Node::Return(e.map(Box::new)) }
+            --
             KW("let") _ i:spanned(<IDENT()>) _ "=" _ n:@ { Node::Declaration(i, Box::new(n)) }
             KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::MultiDeclaration(i, Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Node::Assignment(i, Box::new(e)) }
             --
-            KW("fn") _ name:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block() {
+            KW("fn") _ name:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block(true) {
                 Node::Function {
                     name,
                     args,
@@ -103,20 +105,20 @@ peg::parser!(
             --
             conditional:if_condition() { conditional }
             --
-            KW("while") _ condition:node() _ body:block() {
+            KW("while") _ condition:node() _ body:block(false) {
                 Node::WhileLoop(
                     Box::new(condition),
                     body,
                 )
             }
-            KW("for") _ variable:spanned(<IDENT()>) _ KW("in") _ iterable:node() _ body:block() {
+            KW("for") _ variable:spanned(<IDENT()>) _ KW("in") _ iterable:node() _ body:block(false) {
                 Node::ForLoop{
                     variable,
                     iterable: Box::new(iterable),
                     body,
                 }
             }
-            KW("for") _ variables:COMMASEPP(<spanned(<IDENT()>)>) _ KW("in") _ iterable:node() _ body:block() {
+            KW("for") _ variables:COMMASEPP(<spanned(<IDENT()>)>) _ KW("in") _ iterable:node() _ body:block(false) {
                 Node::MultiForLoop{
                     variables,
                     iterable: Box::new(iterable),
@@ -124,7 +126,7 @@ peg::parser!(
                 }
             }
             --
-            KW("with") _ "@" _ name:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block() {
+            KW("with") _ "@" _ name:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block(false) {
                 Node::ContextWrapped { name, args, variable, body }
             }
             --
@@ -166,20 +168,20 @@ peg::parser!(
             i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(i, args) }
             i:IDENT() { Node::Identifier(i) }
             "(" _ e:node() _ ")" { e.0 }
-            b:block() { Node::Block(b) }
+            b:block(false) { Node::Block(b) }
         }
 
-        rule block() -> Vec<Spanned<Node>>
+        rule block(is_function: bool) -> Vec<Spanned<Node>>
         = s:position!() "{" _ code:(line:node() ** (";"/_)) _ "}" e:position!() {
             let mut code = code;
-            add_implicit_none((&mut code, Span(s, e, src_id)));
+            add_implicit_none((&mut code, Span(s, e, src_id)), is_function);
             code
         }
 
         pub rule code() -> Vec<Spanned<Node>>
         = _ start:position!()  code:(line:node() ** (";"/_))?  end:position!() _ {
             let mut code = code.unwrap_or_default();
-            add_implicit_none((&mut code, Span(start, end, src_id)));
+            add_implicit_none((&mut code, Span(start, end, src_id)), false);
             code
         }
     }
@@ -210,43 +212,61 @@ fn hex_to_rgba(hex: &str) -> Option<[u8; 4]> {
     Some([r, g, b, a])
 }
 
-pub fn add_implicit_none((body, span): Spanned<&mut Vec<Spanned<Node>>>) {
+pub fn add_implicit_none((body, span): Spanned<&mut Vec<Spanned<Node>>>, is_function: bool) {
     if body.is_empty() {
-        body.push((Node::Literal(Literal::None), span));
+        if is_function {
+            body.push((Node::Return(None), span));
+        } else {
+            body.push((Node::Literal(Literal::None), span));
+        }
     } else {
         let last = body.last_mut().expect("body is not empty");
         let span = last.1;
         let last = &mut last.0;
 
-        match last {
-            Node::Block(b) => add_implicit_none((b, span)),
-            Node::Conditional {
-                then, otherwise, ..
-            } => {
-                add_implicit_none((then, span));
-                if let Some(otherwise) = otherwise {
-                    add_implicit_none((otherwise, span));
+        if let Node::Return(_) = last {
+            return;
+        }
+
+        if last.is_expression() {
+            match last {
+                Node::Block(b) => add_implicit_none((b, span), false),
+                Node::Conditional {
+                    then, otherwise, ..
+                } => {
+                    add_implicit_none((then, span), false);
+                    if let Some(otherwise) = otherwise {
+                        add_implicit_none((otherwise, span), false);
+                    }
                 }
-            }
-            Node::ForLoop { body, .. } => {
-                add_implicit_none((body, span));
-            }
-            Node::MultiForLoop { body, .. } => {
-                add_implicit_none((body, span));
-            }
-            Node::WhileLoop(_, body) => {
-                add_implicit_none((body, span));
-            }
-
-            Node::Declaration(_, _)
-            | Node::Assignment(_, _)
-            | Node::MultiDeclaration(_, _)
-            | Node::Function { .. }
-            | Node::Include(_, _) => {
-                body.push((Node::Literal(Literal::None), span));
+                Node::ForLoop { body, .. } => {
+                    add_implicit_none((body, span), false);
+                }
+                Node::MultiForLoop { body, .. } => {
+                    add_implicit_none((body, span), false);
+                }
+                Node::WhileLoop(_, body) => {
+                    add_implicit_none((body, span), false);
+                }
+                Node::ContextWrapped { body, .. } => {
+                    add_implicit_none((body, span), false);
+                }
+                _ => {}
             }
 
-            _ => {}
+            if is_function {
+                let rep = std::mem::replace(last, Node::Literal(Literal::None));
+                *last = Node::Return(Some(Box::new((rep, span))));
+            }
+        } else {
+            match last {
+                Node::Declaration(_, _)
+                | Node::Assignment(_, _)
+                | Node::MultiDeclaration(_, _)
+                | Node::Function { .. }
+                | Node::Include(_, _) => {}
+                _ => {}
+            }
         }
     }
 }

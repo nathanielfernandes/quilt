@@ -13,7 +13,7 @@ fn NewCounter() {
         count
     }
 
-    [Increment, Decrement, Get]
+    return [Increment, Decrement, Get]
 }
 
 let incr, decr, get = NewCounter()
