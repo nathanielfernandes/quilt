@@ -41,10 +41,10 @@ include "std/math.ql"
 // recursion
 fn fib(n) {
     if n < 2 {
-        n
-    } else {
-        fib(n - 1) + fib(n - 2)
-    }
+        return n
+    } 
+    
+    return fib(n - 1) + fib(n - 2)
 }
 
 fib(30)
@@ -86,10 +86,10 @@ fn NewCounter() {
         count = count - 1
     }
 
-    fn Get() {
-        count
-    }
+    // lambdas
+    let Get = fn() { count }
 
+    // implicit return
     [Increment, Decrement, Get]
 }
 
