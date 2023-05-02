@@ -19,10 +19,12 @@ where
         }
     }
 
+    #[inline]
     pub fn take(mut self) -> Vec<V> {
         std::mem::take(&mut self.entries)
     }
 
+    #[inline]
     pub fn take_inplace(mut self, to: &mut Vec<V>) {
         std::mem::swap(&mut self.entries, to);
     }
@@ -37,6 +39,7 @@ where
     /// Otherwise, the value is added to the pool and a new ID is returned.
     /// The ID can be used to retrieve the value from the pool.
     /// The ID is guaranteed to be unique for the lifetime of the pool.
+    #[inline]
     pub fn add(&mut self, value: V) -> ID {
         if let Some(id) = self.duplicates.get(&value) {
             *id
@@ -51,6 +54,7 @@ where
     // Add a value to the pool.
     // forces the value to be added to the pool, even if it already exists.
     // The ID can be used to retrieve the value from the pool.
+    #[inline]
     pub fn add_force(&mut self, value: V) -> ID {
         let id = ID::from_usize(self.entries.len());
         self.entries.push(value.clone());
@@ -58,6 +62,7 @@ where
         id
     }
 
+    #[inline]
     pub fn add_ref(&mut self, value: &V) -> ID {
         if let Some(id) = self.duplicates.get(value) {
             *id
@@ -69,6 +74,7 @@ where
         }
     }
 
+    #[inline]
     pub fn add_ref_force(&mut self, value: &V) -> ID {
         let id = ID::from_usize(self.entries.len());
         self.entries.push(value.clone());
@@ -76,30 +82,42 @@ where
         id
     }
 
+    #[inline]
+    pub fn reserve(&mut self, additional: usize) {
+        self.entries.reserve(additional);
+    }
+
+    #[inline]
     pub fn get(&self, id: ID) -> Option<&V> {
         self.entries.get(id.into())
     }
 
+    #[inline]
     pub fn get_unchecked(&self, id: ID) -> &V {
         &self.entries[id.into()]
     }
 
+    #[inline]
     pub fn get_mut(&mut self, id: ID) -> Option<&mut V> {
         self.entries.get_mut(id.into())
     }
 
+    #[inline]
     pub fn get_mut_unchecked(&mut self, id: ID) -> &mut V {
         &mut self.entries[id.into()]
     }
 
+    #[inline]
     pub fn update(&mut self, id: ID, value: V) {
         self.entries[id.into()] = value;
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &V> {
         self.entries.iter()
     }

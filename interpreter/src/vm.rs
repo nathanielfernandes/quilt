@@ -4,12 +4,13 @@ use arrayvec::ArrayVec;
 use bytecode::bytecode::*;
 use common::{
     error::*,
+    pool::Pool,
     span::{Span, Spanned},
 };
 use fxhash::FxHashMap;
 
 use crate::{
-    builtins::{BuiltinFn, BuiltinFnMap, BuiltinFnReg, ContextExit, VmData},
+    builtins::{BuiltinFn, BuiltinFnMap, BuiltinFnReg, BuiltinListFn, ContextExit, VmData},
     value::{Closure, Upvalue, Value},
     Script,
 };
@@ -25,7 +26,7 @@ where
     block_results: Vec<Value>,
 
     globals: FxHashMap<u16, Value>,
-    global_symbols: Vec<String>,
+    global_symbols: Pool<String, u16>,
 
     open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
 
@@ -40,11 +41,11 @@ impl<const SS: usize, const CSS: usize, Data> VM<SS, CSS, Data>
 where
     Data: VmData,
 {
-    pub fn new(data: Data, script: Script<Data>) -> Self {
+    pub fn new(data: Data, script: Script) -> Self {
         Self {
             data,
 
-            builtins: script.builtins,
+            builtins: BuiltinFnMap::default(),
             exit_fn_stack: Vec::with_capacity(256),
             block_results: Vec::with_capacity(256),
 
@@ -71,6 +72,23 @@ where
                 stack
             },
             sp: 0,
+        }
+    }
+
+    #[inline]
+    pub fn insert_global<S: Into<String>, V: Into<Value>>(&mut self, name: S, value: V) {
+        let id = self.global_symbols.add(name.into());
+        self.globals.insert(id, value.into());
+    }
+
+    #[inline]
+    pub fn add_builtins(&mut self, builtins: BuiltinListFn<Data>) {
+        let builtins = builtins();
+        self.global_symbols.reserve(builtins.len());
+        self.builtins.reserve(builtins.len());
+        for (name, func) in builtins {
+            let name = self.global_symbols.add(name);
+            self.builtins.insert(name, func);
         }
     }
 
@@ -201,7 +219,7 @@ where
                         None => {
                             let name = self
                                 .global_symbols
-                                .get(name as usize)
+                                .get(name)
                                 .cloned()
                                 .unwrap_or(String::from("unkown???"));
 
@@ -238,7 +256,7 @@ where
 
                                 let name = self
                                     .global_symbols
-                                    .get(*entry.key() as usize)
+                                    .get(*entry.key())
                                     .cloned()
                                     .unwrap_or(String::from("unkown???"));
 
@@ -433,7 +451,7 @@ where
                         None => {
                             let name = self
                                 .global_symbols
-                                .get(builtin as usize)
+                                .get(builtin)
                                 .cloned()
                                 .unwrap_or(String::from("unkown???"));
 
@@ -481,7 +499,7 @@ where
                         None => {
                             let name = self
                                 .global_symbols
-                                .get(builtin as usize)
+                                .get(builtin)
                                 .cloned()
                                 .unwrap_or(String::from("unkown???"));
 

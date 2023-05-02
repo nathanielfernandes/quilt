@@ -7,7 +7,6 @@ use common::{
     span::{Span, Spanned},
 };
 use interpreter::{
-    builtins::{BuiltinFnMap, BuiltinListFn},
     value::{Function, Value},
     Script,
 };
@@ -16,13 +15,13 @@ use parser::{
     node::{Node, Op},
 };
 
-pub struct Compiler<Data = ()> {
+pub struct Compiler {
     level: Level,
     global_symbols: Pool<String, u16>,
-    builtins: BuiltinFnMap<Data>,
+    // builtins: BuiltinFnMap<Data>,
 }
 
-impl<Data> Compiler<Data> {
+impl Compiler {
     pub fn new() -> Self {
         Self {
             level: Level {
@@ -40,16 +39,16 @@ impl<Data> Compiler<Data> {
                 constant_pool: Pool::<Value, u16>::new(),
             },
             global_symbols: Pool::new(),
-            builtins: BuiltinFnMap::default(),
+            // builtins: BuiltinFnMap::default(),
         }
     }
 
-    pub fn add_builtins(&mut self, builtins: BuiltinListFn<Data>) {
-        for (name, func) in builtins() {
-            let name = self.global_symbols.add(name);
-            self.builtins.insert(name, func);
-        }
-    }
+    // pub fn add_builtins(&mut self, builtins: BuiltinListFn<Data>) {
+    //     for (name, func) in builtins() {
+    //         let name = self.global_symbols.add(name);
+    //         self.builtins.insert(name, func);
+    //     }
+    // }
 
     #[inline]
     fn is_global(&self) -> bool {
@@ -214,17 +213,18 @@ impl<Data> Compiler<Data> {
         }
     }
 
-    pub fn compile(mut self, ast: &Vec<Spanned<Node>>) -> Result<Script<Data>, ErrorS> {
+    pub fn compile(ast: &Vec<Spanned<Node>>) -> Result<Script, ErrorS> {
+        let mut compiler = Compiler::new();
+
         if let Some((_, span)) = ast.first() {
-            self.level.function.name.1 = *span;
+            compiler.level.function.name.1 = *span;
         }
 
-        self.compile_stmnts(ast)?;
+        compiler.compile_stmnts(ast)?;
 
         Ok(Script {
-            global_symbols: self.global_symbols.take(),
-            function: self.level.finish().0,
-            builtins: self.builtins,
+            global_symbols: compiler.global_symbols,
+            function: compiler.level.finish().0,
         })
     }
 

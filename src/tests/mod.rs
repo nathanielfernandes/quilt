@@ -10,14 +10,14 @@ fn test_code<const SS: usize, const CSS: usize>(
     let ast =
         sources.parse_with_includes(test_name, &src, &mut DefaultIncludeResolver::default())?;
 
-    let mut compiler: Compiler<()> = Compiler::new();
-    compiler.add_builtins(qstd::io);
-    compiler.add_builtins(qstd::math);
-    compiler.add_builtins(qstd::core);
+    let script = Compiler::compile(&ast)?;
 
-    let script = compiler.compile(&ast)?;
+    let mut vm = VM::<SS, CSS>::new((), script);
+    vm.add_builtins(qstd::io);
+    vm.add_builtins(qstd::math);
+    vm.add_builtins(qstd::core);
 
-    VM::<SS, CSS>::new((), script).run()
+    vm.run()
 }
 
 #[test]

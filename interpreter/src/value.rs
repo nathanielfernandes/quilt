@@ -231,3 +231,45 @@ impl Hash for Upvalue {
         }
     }
 }
+
+impl From<i32> for Value {
+    fn from(i: i32) -> Self {
+        Value::Int(i)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(f: f32) -> Self {
+        Value::Float(f)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+        Value::Bool(b)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::String(Rc::new(s))
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::String(Rc::new(s.to_owned()))
+    }
+}
+
+impl From<&String> for Value {
+    fn from(s: &String) -> Self {
+        Value::String(Rc::new(s.to_owned()))
+    }
+}
+
+impl From<(i32, i32)> for Value {
+    fn from((a, b): (i32, i32)) -> Self {
+        Value::Range(a, b)
+    }
+}

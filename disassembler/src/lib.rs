@@ -7,17 +7,17 @@ use interpreter::{
     Script,
 };
 
-pub struct Disassembler<'a, Data> {
+pub struct Disassembler<'a> {
     pub src: &'a SourceCache,
-    pub entry: &'a Script<Data>,
+    pub entry: &'a Script,
 
     // keeps track of jumps to show on the dissasembly output
     jump_stack: Vec<usize>,
     output: String,
 }
 
-impl<'a, Data> Disassembler<'a, Data> {
-    pub fn new(entry: &'a Script<Data>, src: &'a SourceCache) -> Self {
+impl<'a> Disassembler<'a> {
+    pub fn new(entry: &'a Script, src: &'a SourceCache) -> Self {
         Self {
             src,
             entry,
@@ -193,7 +193,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                     DefineGlobal | LoadGlobal | SetGlobal => self
                         .entry
                         .global_symbols
-                        .get(local_offset as usize)
+                        .get(local_offset)
                         .cloned()
                         .unwrap_or("unknown".to_string()),
 
@@ -262,7 +262,7 @@ impl<'a, Data> Disassembler<'a, Data> {
                         "<builtin @{}>",
                         self.entry
                             .global_symbols
-                            .get(builtin_offset as usize)
+                            .get(builtin_offset)
                             .cloned()
                             .unwrap_or("unknown???".to_string()),
                     )

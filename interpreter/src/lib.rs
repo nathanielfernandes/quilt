@@ -1,4 +1,4 @@
-use builtins::BuiltinFnMap;
+use common::pool::Pool;
 use value::Function;
 
 pub mod arith;
@@ -7,8 +7,7 @@ pub mod qstd;
 pub mod value;
 pub mod vm;
 
-pub struct Script<Data> {
-    pub global_symbols: Vec<String>,
+pub struct Script {
+    pub global_symbols: Pool<String, u16>,
     pub function: Function,
-    pub builtins: BuiltinFnMap<Data>,
 }
