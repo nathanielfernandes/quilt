@@ -21,6 +21,7 @@ pub enum Node {
         body: Vec<NodeS>,
     },
 
+    Lambda(Vec<Spanned<String>>, Vec<NodeS>),
     Block(Vec<NodeS>),
     Conditional {
         condition: Box<NodeS>,
@@ -41,7 +42,7 @@ pub enum Node {
 
     Binary(Op, Box<NodeS>, Box<NodeS>),
     Unary(Op, Box<NodeS>),
-    Call(Spanned<String>, Vec<NodeS>),
+    Call(Box<NodeS>, Vec<NodeS>),
     BuiltinCall(Spanned<String>, Vec<NodeS>),
     ContextWrapped {
         name: Spanned<String>,

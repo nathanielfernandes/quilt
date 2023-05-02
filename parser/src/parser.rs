@@ -69,7 +69,6 @@ peg::parser!(
         / "(" _ h:literal() _ "," _ t:literal() _ ")" { Literal::Pair(Box::new(h), Box::new(t)) }
         / "[" _ e:COMMASEP(<literal()>) _ "]" { Literal::Array(e) }
 
-
         rule _elif() -> Vec<Spanned<Node>>
         = s:position!() _ code:if_condition()  _ e:position!() { vec![(code, Span(s, e, src_id) )] }
 
@@ -95,11 +94,15 @@ peg::parser!(
             KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::MultiDeclaration(i, Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Node::Assignment(i, Box::new(e)) }
             --
-            KW("fn") _ name:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block(true) {
-                Node::Function {
-                    name,
-                    args,
-                    body,
+            KW("fn") _ name:spanned(<IDENT()>)? _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block(true) {
+                if let Some(name) = name {
+                    Node::Function {
+                        name,
+                        args,
+                        body,
+                    }
+                } else {
+                    Node::Lambda(args, body)
                 }
             }
             --
@@ -165,7 +168,8 @@ peg::parser!(
             "(" _ l:node() _ "," _ r:node() _ ")" { Node::Pair(Box::new(l), Box::new(r)) }
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Node::Literal(Literal::Pair(Box::new(l), Box::new(r))) }
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::BuiltinCall(i, args) }
-            i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(i, args) }
+            // i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(i, args) }
+            i:@  _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(Box::new(i), args) }
             i:IDENT() { Node::Identifier(i) }
             "(" _ e:node() _ ")" { e.0 }
             b:block(false) { Node::Block(b) }
@@ -259,13 +263,10 @@ pub fn add_implicit_none((body, span): Spanned<&mut Vec<Spanned<Node>>>, is_func
                 *last = Node::Return(Some(Box::new((rep, span))));
             }
         } else {
-            match last {
-                Node::Declaration(_, _)
-                | Node::Assignment(_, _)
-                | Node::MultiDeclaration(_, _)
-                | Node::Function { .. }
-                | Node::Include(_, _) => {}
-                _ => {}
+            if is_function {
+                body.push((Node::Return(None), span));
+            } else {
+                body.push((Node::Literal(Literal::None), span));
             }
         }
     }

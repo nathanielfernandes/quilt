@@ -54,3 +54,39 @@ if (get() != 2) {
     @err("Expected 2, got " .. get())
 }
 
+fn SOUP() {
+    let a = 0
+
+    let b = [
+        fn() {
+            a = a + 1
+        },
+        fn() {
+            a = a - 1
+        },
+        fn() {
+            a
+        }
+    ]
+}
+
+fn GOOP() {
+    let a = 0
+
+    let b = [
+        fn() {
+            a = a + 1
+        },
+        fn() {
+            a = a - 1
+        },
+        fn() {
+            a
+        }
+    ]
+
+    return b
+}
+
+let a = SOUP()
+let a, b, c = GOOP()

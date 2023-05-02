@@ -452,13 +452,15 @@ impl Compiler {
                 self.set_variable(name, *span);
             }
 
-            Node::Call((name, c_span), args) => {
+            Node::Call(expr, args) => {
                 let arity: u8 = args
                     .len()
                     .try_into()
                     .map_err(|_| (OverflowError::TooManyArgs.into(), *span))?;
 
-                self.get_variable(name, *c_span);
+                // self.get_variable(name, *c_span);
+
+                self.compile_expr(expr)?;
 
                 for arg in args {
                     self.compile_expr(arg)?;
@@ -673,6 +675,53 @@ impl Compiler {
                 // self.write_op_u16(PopMany, 2, *span);
 
                 self.exit_scope(span);
+            }
+
+            Node::Lambda(args, body) => {
+                let arity: u8 = args
+                    .len()
+                    .try_into()
+                    .map_err(|_| (OverflowError::TooManyParams.into(), *span))?;
+
+                let name = "@__lambda__";
+
+                let level = Level {
+                    function: Function {
+                        name: (name.to_owned(), *span),
+                        arity,
+                        upvalue_count: 0,
+                        chunk: Chunk::new(),
+                    },
+                    locals: Vec::new(),
+                    upvalues: Vec::new(),
+                    enclosing: None,
+                    scope_depth: self.level.scope_depth,
+                    symbol_pool: Pool::new(),
+                    constant_pool: Pool::new(),
+                };
+
+                self.enter_level(level);
+                self.enter_scope();
+
+                for (name, _) in args {
+                    self.define_local(&name, true);
+                }
+
+                self.compile_stmnts(&body)?;
+
+                let (function, upvalues) = self.exit_level();
+
+                let value = Value::Function(Rc::new(function));
+                let offset = self.add_constant(value);
+                if upvalues.len() > 0 {
+                    self.write_op_u16(CreateClosure, offset, *span);
+                    for Upvalue(idx, is_local) in upvalues {
+                        self.write_u8(is_local.into(), *span);
+                        self.write_u16(idx, *span);
+                    }
+                } else {
+                    self.write_op_u16(CreateFunction, offset, *span);
+                }
             }
 
             Node::Binary(operand, lhs, rhs) => {
