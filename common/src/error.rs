@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{io::Cursor, time::Duration};
 
 use ariadne::{Color, Label, Report, ReportKind};
 
@@ -44,6 +44,9 @@ pub enum Error {
 
     #[error("Division by zero")]
     ZeroDivisionError,
+
+    #[error("Runtime limit exceeded: {0:?}")]
+    RuntimeLimitExceeded(Duration),
 
     #[error("Halt")]
     Halt,
@@ -92,6 +95,7 @@ impl NamedError for Error {
             Error::IncludeError(e) => e.name(),
             Error::SyntaxError(e) => e.name(),
             Error::ZeroDivisionError => "ZeroDivisionError",
+            Error::RuntimeLimitExceeded(_) => "RuntimeLimitExceeded",
             Error::Halt => "Halt",
         }
     }

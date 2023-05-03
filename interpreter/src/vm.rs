@@ -35,6 +35,9 @@ where
 
     stack: Vec<Value>,
     sp: usize,
+
+    start_time: std::time::Instant,
+    max_runtime: std::time::Duration,
 }
 
 impl<const SS: usize, const CSS: usize, Data> VM<SS, CSS, Data>
@@ -72,7 +75,23 @@ where
                 stack
             },
             sp: 0,
+
+            start_time: std::time::Instant::now(),
+            max_runtime: std::time::Duration::MAX,
         }
+    }
+
+    // Note: max_runtime is checked every 64 instructions,
+    // so it may exceed the max_runtime by up to 64 instructions
+    #[inline]
+    pub fn set_max_runtime(&mut self, max_runtime: std::time::Duration) {
+        self.max_runtime = max_runtime;
+    }
+
+    #[inline]
+    pub fn reserve_globals(&mut self, n: usize) {
+        self.global_symbols.reserve(n);
+        self.globals.reserve(n);
     }
 
     #[inline]
@@ -92,12 +111,23 @@ where
         }
     }
 
+    #[inline]
     pub fn finish(self) -> Data {
         self.data
     }
 
     pub fn run(&mut self) -> Result<Value, ErrorS> {
+        self.start_time = std::time::Instant::now();
+        let mut n = 0;
         loop {
+            if n > 64 {
+                self.has_runtime_exceeded()?;
+
+                n = 0;
+            } else {
+                n += 1;
+            }
+
             if self.frame.ip >= self.frame.closure.function.chunk.len() {
                 return Err(self.error(OverflowError::InstructionOverflow.into()));
             }
@@ -505,6 +535,8 @@ where
                             return Err(self.error_1(NameError::UndefinedBuiltin(name).into()));
                         }
                     }
+
+                    self.has_runtime_exceeded()?;
                 }
 
                 CallFunction => {
@@ -796,6 +828,16 @@ where
         Ok(result)
     }
 
+    #[inline]
+    fn has_runtime_exceeded(&self) -> Result<(), ErrorS> {
+        if self.start_time.elapsed() > self.max_runtime {
+            Err(self.errorf(Error::RuntimeLimitExceeded(self.max_runtime)))
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
     fn capture_upvalue(&mut self, location: usize) -> Rc<RefCell<Upvalue>> {
         for upvalue in self.open_upvalues.iter_mut() {
             if let Upvalue::Open(loc) = *upvalue.borrow() {
@@ -851,6 +893,17 @@ where
             .function
             .chunk
             .get_span(self.frame.ip.saturating_sub(1));
+        (error, span)
+    }
+
+    #[inline]
+    fn errorf(&self, error: Error) -> ErrorS {
+        let span = if self.frames.is_empty() {
+            self.frame.closure.function.chunk.get_span(self.frame.ip)
+        } else {
+            self.frame.closure.function.name.1
+        };
+
         (error, span)
     }
 
