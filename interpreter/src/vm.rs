@@ -10,7 +10,9 @@ use common::{
 use fxhash::FxHashMap;
 
 use crate::{
-    builtins::{BuiltinFn, BuiltinFnMap, BuiltinFnReg, BuiltinListFn, ContextExit, VmData},
+    builtins::{
+        BuiltinAdderFn, BuiltinFn, BuiltinFnMap, BuiltinFnReg, BuiltinList, ContextExit, VmData,
+    },
     value::{Closure, Upvalue, Value},
     Script,
 };
@@ -101,10 +103,14 @@ where
     }
 
     #[inline]
-    pub fn add_builtins(&mut self, builtins: BuiltinListFn<Data>) {
-        let builtins = builtins();
-        self.global_symbols.reserve(builtins.len());
-        self.builtins.reserve(builtins.len());
+    pub fn add_builtins(&mut self, builtins: BuiltinAdderFn<SS, CSS, Data>) {
+        builtins(self);
+    }
+
+    #[inline]
+    pub fn add_builtins_list<const N: usize>(&mut self, builtins: BuiltinList<N, Data>) {
+        self.global_symbols.reserve(N);
+        self.builtins.reserve(N);
         for (name, func) in builtins {
             let name = self.global_symbols.add(name);
             self.builtins.insert(name, func);

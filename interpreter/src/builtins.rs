@@ -4,7 +4,7 @@ use common::{
 };
 use fxhash::FxHashMap;
 
-use crate::value::Value;
+use crate::{value::Value, vm};
 
 pub use paste::paste;
 
@@ -45,6 +45,8 @@ pub type BuiltinFnReg<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, B
 
 pub type ContextEntry<Data> = BuiltinFnReg<Data>;
 pub type ContextExit<Data> = fn(&mut Data) -> Result<(), BuiltinError>;
+
+#[derive(Clone, Copy)]
 pub enum BuiltinFn<Data> {
     /// a builtin function that takes a [`BuiltinArgs`] and returns a [`Value`]
     Fn(BuiltinFnReg<Data>),
@@ -54,9 +56,8 @@ pub enum BuiltinFn<Data> {
 /// a type alias representing a map of builtin functions
 pub type BuiltinFnMap<Data> = FxHashMap<u16, BuiltinFn<Data>>;
 
-pub type BuiltinList<Data> = Vec<(String, BuiltinFn<Data>)>;
-
-pub type BuiltinListFn<Data> = fn() -> BuiltinList<Data>;
+pub type BuiltinList<const N: usize, Data> = [(String, BuiltinFn<Data>); N];
+pub type BuiltinAdderFn<const SS: usize, const CSS: usize, Data> = fn(&mut vm::VM<SS, CSS, Data>);
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
@@ -264,12 +265,16 @@ macro_rules! generic_builtins {
                 }
            )*
 
-            pub fn $group<Data>() -> crate::builtins::BuiltinList<Data> {
-                vec![
-                    $(
-                        (String::from(stringify!($name)), crate::builtins::BuiltinFn::Fn($name)),
-                    )*
-                ]
+            pub fn $group<const SS: usize, const CSS: usize, Data>(vm: &mut crate::vm::VM<SS, CSS, Data>)
+            where Data : crate::builtins::VmData
+            {
+                vm.add_builtins_list(
+                    [
+                        $(
+                            (String::from(stringify!($name)), crate::builtins::BuiltinFn::Fn($name)),
+                        )*
+                    ]
+                );
             }
     };
 }
@@ -324,12 +329,16 @@ macro_rules! specific_builtins {
                }
            )*
 
-           pub fn $group() -> BuiltinList<$datatype> {
-                vec![
-                    $(
-                        (String::from(stringify!($name)), BuiltinFn::Fn($name)),
-                    )*
-                ]
+           pub fn $group<const SS: usize, const CSS: usize>(vm: &mut VM<SS, CSS, $datatype>)
+           {
+
+                vm.add_builtins_list(
+                    [
+                        $(
+                            (String::from(stringify!($name)), BuiltinFn::Fn($name)),
+                        )*
+                    ]
+                );
             }
 
            paste! {
@@ -407,10 +416,15 @@ macro_rules! context_builtins {
                 }
            )*
 
-           pub fn $group() -> BuiltinList<$datatype> {
-                vec![  $(
-                    (String::from(stringify!($start_name)), BuiltinFn::Context($start_name, $end_name)),
-               )*]
+           pub fn $group<const SS: usize, const CSS: usize>(vm: &mut VM<SS, CSS, $datatype>)
+           {
+                vm.add_builtins_list(
+                    [
+                        $(
+                            (String::from(stringify!($start_name)), BuiltinFn::Context($start_name, $end_name)),
+                        )*
+                    ]
+                )
            }
 
            paste! {
