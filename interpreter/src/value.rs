@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     hash::{Hash, Hasher},
+    ops::Range,
     rc::Rc,
 };
 
@@ -232,17 +233,29 @@ impl Hash for Upvalue {
     }
 }
 
-impl From<i32> for Value {
-    fn from(i: i32) -> Self {
-        Value::Int(i)
-    }
+macro_rules! impl_from {
+    (float $($t:ty),*) => {
+        $(
+            impl From<$t> for Value {
+                fn from(v: $t) -> Self {
+                    Value::Float(v as f32)
+                }
+            }
+        )*
+    };
+    (int $($t:ty),*) => {
+        $(
+            impl From<$t> for Value {
+                fn from(v: $t) -> Self {
+                    Value::Int(v as i32)
+                }
+            }
+        )*
+    };
 }
 
-impl From<f32> for Value {
-    fn from(f: f32) -> Self {
-        Value::Float(f)
-    }
-}
+impl_from!(float f32, f64);
+impl_from!(int i8, i16, i32, i64, u8, u16, u32, u64);
 
 impl From<bool> for Value {
     fn from(b: bool) -> Self {
@@ -268,9 +281,9 @@ impl From<&String> for Value {
     }
 }
 
-impl From<(i32, i32)> for Value {
-    fn from((a, b): (i32, i32)) -> Self {
-        Value::Range(a, b)
+impl From<Range<i32>> for Value {
+    fn from(r: Range<i32>) -> Self {
+        Value::Range(r.start, r.end)
     }
 }
 
@@ -286,11 +299,23 @@ impl From<(&'static str, usize)> for Value {
     }
 }
 
-impl From<Option<Value>> for Value {
-    fn from(o: Option<Value>) -> Self {
+impl<T: Into<Value>> From<Option<T>> for Value {
+    fn from(o: Option<T>) -> Self {
         match o {
-            Some(v) => v,
+            Some(v) => v.into(),
             None => Value::None,
         }
+    }
+}
+
+impl<L: Into<Value>, R: Into<Value>> From<(L, R)> for Value {
+    fn from((a, b): (L, R)) -> Self {
+        Value::Pair(Rc::new((a.into(), b.into())))
+    }
+}
+
+impl<T: Into<Value>> From<Vec<T>> for Value {
+    fn from(v: Vec<T>) -> Self {
+        Value::Array(Rc::new(v.into_iter().map(|v| v.into()).collect()))
     }
 }
