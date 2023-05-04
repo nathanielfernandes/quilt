@@ -273,3 +273,24 @@ impl From<(i32, i32)> for Value {
         Value::Range(a, b)
     }
 }
+
+impl From<[u8; 4]> for Value {
+    fn from(c: [u8; 4]) -> Self {
+        Value::Color(c)
+    }
+}
+
+impl From<(&'static str, usize)> for Value {
+    fn from((s, i): (&'static str, usize)) -> Self {
+        Value::Special(Box::new((s, i)))
+    }
+}
+
+impl From<Option<Value>> for Value {
+    fn from(o: Option<Value>) -> Self {
+        match o {
+            Some(v) => v,
+            None => Value::None,
+        }
+    }
+}
