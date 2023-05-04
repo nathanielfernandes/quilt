@@ -511,9 +511,13 @@ impl Compiler {
 
                 self.enter_scope();
 
+                // if there is an 'as varname' part, define the variable
+                // if not just pop if off
                 if let Some((varname, span)) = varname {
                     self.define_local(varname, true);
                     self.set_variable(varname, *span);
+                } else {
+                    self.write_op(Pop, *span)
                 }
 
                 self.compile_stmnts(body)?;
