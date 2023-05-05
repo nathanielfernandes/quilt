@@ -17,7 +17,7 @@ pub mod prelude {
     pub use interpreter::generic_builtins;
     pub use interpreter::specific_builtins;
 
-    pub use common::error::{BuiltinError, Error, ErrorExt, ErrorS};
+    pub use common::error::*;
     pub use common::sourcecache::SourceCache;
     pub use common::span::{Span, Spanned};
 
