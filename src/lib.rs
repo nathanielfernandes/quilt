@@ -5,7 +5,7 @@ pub mod prelude {
     pub use parser::node::Node;
     pub use parser::{parse_code, parse_literal};
 
-    pub use compiler::Compiler;
+    pub use compiler::{literal_to_value, Compiler};
 
     pub use interpreter::builtins::{Consumable, VmData};
     pub use interpreter::qstd;

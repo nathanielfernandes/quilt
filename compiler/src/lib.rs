@@ -948,7 +948,7 @@ impl Level {
     }
 }
 
-fn literal_to_value(literal: &Literal) -> Value {
+pub fn literal_to_value(literal: &Literal) -> Value {
     match literal {
         Literal::None => Value::None,
         Literal::Bool(b) => Value::Bool(*b),
