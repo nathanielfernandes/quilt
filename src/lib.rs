@@ -19,6 +19,7 @@ pub mod prelude {
 
     pub use common::error::{BuiltinError, Error, ErrorExt, ErrorS};
     pub use common::sourcecache::SourceCache;
+    pub use common::span::{Span, Spanned};
 
     pub use disassembler::Disassembler;
 
