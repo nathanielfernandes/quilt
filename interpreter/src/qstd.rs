@@ -19,6 +19,37 @@ generic_builtins! {
         }
     }
 
+    fn @slice(list: list, start: int, end: int) {
+        let len = list.len() as i32;
+
+        // only allow negative indices if they are in bounds
+        let start = if start < 0 {
+            if -start > len {
+                error!(format!("index {} out of bounds", start))?
+            } else {
+                len + start
+            }
+        } else {
+            start
+        };
+
+        let end = if end < 0 {
+            if -end > len {
+                error!(format!("index {} out of bounds", end))?
+            } else {
+                len + end
+            }
+        } else {
+            end
+        };
+
+        if start > end {
+            error!(format!("start index is greater than end index"))?
+        }
+
+        list[start as usize..end as usize].to_vec().into()
+    }
+
     fn @str(arg: any) {
         Value::String(Rc::new(arg.to_string()))
     }
@@ -213,6 +244,78 @@ generic_builtins! {
         }
 
         Value::Float(rand::random::<f32>() % (end - start) + start)
+    }
+}
+
+generic_builtins! {
+    [export=strings]
+
+    fn @capitalize(s: str) {
+        let mut c = s.chars();
+        match c.next() {
+            None => "".to_string(),
+            Some(f) => f.to_uppercase().chain(c).collect(),
+        }.into()
+    }
+
+    fn @title(s: str) {
+        fn capitalize(s: &str) -> String {
+            let mut c = s.chars();
+            match c.next() {
+                None => "".to_string(),
+                Some(f) => f.to_uppercase().chain(c).collect(),
+            }
+        }
+
+        s.split_whitespace().map(capitalize).collect::<Vec<String>>().join(" ").into()
+    }
+
+    fn @uppercase(s: str) {
+        s.to_uppercase().into()
+    }
+
+    fn @lowercase(s: str) {
+        s.to_lowercase().into()
+    }
+
+    fn @split(s: str, sep: str) {
+        s.split(&sep).collect::<Vec<&str>>().into()
+    }
+
+    fn @join(s: list, sep: str) {
+        s.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(&sep).into()
+    }
+
+    fn @replace(s: str, old: str, new: str) {
+        s.replace(&old, &new).into()
+    }
+
+    fn @trim(s: str) {
+        s.trim().into()
+    }
+
+    fn @trim_start(s: str) {
+        s.trim_start().into()
+    }
+
+    fn @trim_end(s: str) {
+        s.trim_end().into()
+    }
+
+    fn @starts_with(s: str, start: str) {
+        s.starts_with(&start).into()
+    }
+
+    fn @ends_with(s: str, end: str) {
+        s.ends_with(&end).into()
+    }
+
+    fn @contains(s: str, contains: str) {
+        s.contains(&contains).into()
+    }
+
+    fn @chars(s: str) {
+        s.chars().map(|c| c.to_string()).collect::<Vec<String>>().into()
     }
 }
 
