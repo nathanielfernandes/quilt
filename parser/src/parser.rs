@@ -26,18 +26,22 @@ peg::parser!(
         rule KW(id: &str) = ##parse_string_literal(id) !['a'..='z' | 'A'..='Z' | '0'..='9' | '_'] { () }
 
         rule IDENT() -> String
-        = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {
-            n.to_owned()
-        } }
+        = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {?
+            if matches!(n, "true" | "false" | "none" | "let" | "fn" | "include" | "with" | "as" | "while" | "for" | "in" | "return") {
+                return Err("Invalid identifier");
+            }
+
+            Ok(n.to_owned())
+        }}
         / expected!("identifier")
 
         rule INT() -> i32
-        = quiet!{ _ i:$("-"?['0'..='9']+) _ { i.parse().unwrap() } }
+        = quiet!{ _ i:$("-"?['0'..='9']+) _ { i.parse().unwrap_or(0) } }
         / expected!("integer")
 
         rule FLOAT() -> f32
-            = quiet!{ _ i:$("-"?['0'..='9']+ "." !"." ['0'..='9']*) _ { i.parse().unwrap() } }
-            / expected!("float")
+        = quiet!{ _ i:$("-"?['0'..='9']+ "." !"." ['0'..='9']*) _ { i.parse().unwrap_or(0.0) } }
+        / expected!("float")
 
         rule HEX() -> [u8; 4]
         = ("#" / "0x")  s:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) {?
@@ -54,7 +58,7 @@ peg::parser!(
 
         rule doubleQuotedCharacter() -> char
         = !("\"") c:([_]) { c }
-        / "\\u{" value:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) "}" { char::from_u32(u32::from_str_radix(value, 16).unwrap()).unwrap() }
+        / "\\u{" value:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) "}" { char::from_u32(u32::from_str_radix(value, 16).unwrap_or(0)).unwrap_or(' ') }
         / expected!("valid escape sequence")
 
         pub rule literal() -> Literal
@@ -129,7 +133,7 @@ peg::parser!(
                 }
             }
             --
-            KW("with") _ "@" _ name:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block(false) {
+            KW("with") _ name:("@" _ name:spanned(<IDENT()>) {name} / expected!("builtin") ) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block(false) {
                 Node::ContextWrapped { name, args, variable, body }
             }
             --
