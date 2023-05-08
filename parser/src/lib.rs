@@ -1,5 +1,5 @@
 use common::{
-    error::{Error, ErrorS, SyntaxError},
+    error::{Error, ErrorS, Expected, SyntaxError},
     span::{Span, Spanned},
 };
 use literal::Literal;
@@ -24,7 +24,7 @@ fn syntax_error(err: ParseError<LineCol>, src_id: usize) -> ErrorS {
         SyntaxError::UnexpectedToken {
             line,
             column,
-            expected,
+            expected: Expected(expected),
         }
         .into(),
         Span(offset, offset, src_id),

@@ -242,12 +242,28 @@ impl NamedError for IncludeError {
 }
 
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub struct Expected(pub Vec<&'static str>);
+
+impl std::fmt::Display for Expected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.0.iter();
+        if let Some(first) = iter.next() {
+            write!(f, "{}", first)?;
+            for item in iter {
+                write!(f, ", {}", item)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum SyntaxError {
-    #[error("unexpected token at line {line}, column {column}, expected one of {expected:?}")]
+    #[error("unexpected token at line {line}, column {column}, expected one of {expected}")]
     UnexpectedToken {
         line: usize,
         column: usize,
-        expected: Vec<&'static str>,
+        expected: Expected,
     },
 
     #[error("statement was used in place of expression")]
