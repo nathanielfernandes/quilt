@@ -307,7 +307,7 @@ impl<'a> Disassembler<'a> {
     }
 }
 
-trait View {
+pub trait View {
     fn display(&self) -> String;
 }
 
