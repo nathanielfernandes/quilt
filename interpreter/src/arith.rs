@@ -115,7 +115,16 @@ impl Value {
     pub fn multiply(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::String(lhs), Value::Int(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.repeat((*rhs).min(64) as usize))))
+                if *rhs < 0 {
+                    return Err(TypeError::UnsupportedBinaryOperation {
+                        op: "*",
+                        lhs: self.ntype(),
+                        rhs: "-int",
+                    }
+                    .into());
+                }
+
+                Ok(Value::String(Rc::new(lhs.repeat((*rhs).min(256) as usize))))
             }
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs * rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs * rhs)),
