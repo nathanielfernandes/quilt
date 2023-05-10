@@ -36,11 +36,11 @@ peg::parser!(
         / expected!("identifier")
 
         rule INT() -> i32
-        = quiet!{ _ i:$("-"?['0'..='9']+) _ { i.parse().unwrap_or(0) } }
+        = quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
         / expected!("integer")
 
         rule FLOAT() -> f32
-        = quiet!{ _ i:$("-"?['0'..='9']+ "." !"." ['0'..='9']*) _ { i.parse().unwrap_or(0.0) } }
+        = quiet!{  i:$("-"?['0'..='9']+ "." !"." ['0'..='9']*)  { i.parse().unwrap_or(0.0) } }
         / expected!("float")
 
         rule HEX() -> [u8; 4]
