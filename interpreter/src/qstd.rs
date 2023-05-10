@@ -1,5 +1,7 @@
 use std::{io::Write, rc::Rc};
 
+use rand::Rng;
+
 use crate::{generic_builtins, value::Value};
 
 generic_builtins! {
@@ -10,6 +12,17 @@ generic_builtins! {
     }
 
     fn @get(list: list, index: int) {
+        let index = if index < 0 {
+            if -index > list.len() as i32 {
+                error!(format!("index {} out of bounds", index))?
+            } else {
+                list.len() as i32 + index
+            }
+        } else {
+            index
+        };
+
+
         if let Some(v) = list.get(index as usize) {
             v.clone()
         } else {
@@ -110,8 +123,48 @@ generic_builtins! {
     fn @rgb(r: u8, g: u8, b: u8) {
         Value::Color([r, g, b, 255])
     }
+
+    fn @hsla(h: num, s: float, l: float, a: float) {
+        Value::Color(hsla_to_rgba(h, s, l, a))
+    }
+
+    fn @hsl(h: num, s: float, l: float) {
+        Value::Color(hsla_to_rgba(h, s, l, 1.0))
+    }
+
+    fn @gettype(arg: any) {
+        arg.ntype().into()
+    }
 }
 
+#[inline]
+fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let h_ = h / 60.0;
+    let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+
+    let (r, g, b) = if h_ < 1.0 {
+        (c, x, 0.0)
+    } else if h_ < 2.0 {
+        (x, c, 0.0)
+    } else if h_ < 3.0 {
+        (0.0, c, x)
+    } else if h_ < 4.0 {
+        (0.0, x, c)
+    } else if h_ < 5.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    [
+        ((r + m).max(0.0).min(1.0) * 255.0).round() as u8,
+        ((g + m).max(0.0).min(1.0) * 255.0).round() as u8,
+        ((b + m).max(0.0).min(1.0) * 255.0).round() as u8,
+        (a * 255.0).round() as u8,
+    ]
+}
 generic_builtins! {
     [export=math]
 
@@ -235,7 +288,7 @@ generic_builtins! {
             error!("start must be less than end".to_string())?
         }
 
-        Value::Int(rand::random::<i32>() % (end - start) + start)
+        Value::Int(rand::thread_rng().gen_range(start..end))
     }
 
     fn @randfloat(start: float, end: float) {
@@ -243,7 +296,7 @@ generic_builtins! {
             error!("start must be less than end".to_string())?
         }
 
-        Value::Float(rand::random::<f32>() % (end - start) + start)
+        Value::Float(rand::thread_rng().gen_range(start..end))
     }
 }
 
