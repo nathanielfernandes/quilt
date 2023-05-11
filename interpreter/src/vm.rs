@@ -2,16 +2,12 @@ use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
 
 use arrayvec::ArrayVec;
 use bytecode::bytecode::*;
-use common::{
-    error::*,
-    pool::Pool,
-    span::{Span, Spanned},
-};
+use common::{error::*, pool::Pool};
 use fxhash::FxHashMap;
 
 use crate::{
     builtins::{
-        BuiltinAdderFn, BuiltinFn, BuiltinFnMap, BuiltinFnReg, BuiltinList, ContextExit, VmData,
+        BuiltinAdderFn, BuiltinArgs, BuiltinFn, BuiltinFnMap, BuiltinList, ContextExit, VmData,
     },
     value::{Closure, Upvalue, Value},
     Script,
@@ -437,7 +433,7 @@ where
 
                 ExitContext => {
                     if let Some(exit) = self.exit_fn_stack.pop() {
-                        exit(&mut self.data)?;
+                        exit(&mut self.data).map_err(|e| self.error_1(e.into()))?;
                     }
                     // no need to check for stack underflow here
                     // else {
@@ -456,30 +452,19 @@ where
                                 BuiltinFn::Context(entry, exit) => (entry, Some(exit)),
                             };
 
-                            let span = self
-                                .frame
-                                .closure
-                                .function
-                                .chunk
-                                .get_span(self.frame.ip - 1);
-
-                            let mut args = Vec::with_capacity(argc);
-                            args.resize(argc, (Value::None, span));
-
-                            for i in (0..argc).rev() {
-                                if self.sp == 0 {
-                                    return Err(self.error(OverflowError::StackUnderflow.into()));
-                                }
-                                self.sp -= 1;
-
-                                std::mem::swap(&mut self.stack[self.sp], &mut args[i].0)
+                            if self.sp < argc {
+                                return Err(self.error(OverflowError::StackUnderflow.into()));
                             }
+
+                            let args = &self.stack[self.sp - argc..self.sp];
+                            self.sp -= argc;
 
                             if let Some(exit) = exit {
                                 self.exit_fn_stack.push(*exit);
                             }
 
-                            let result = self.eval_builtin(*entry, args, span)?;
+                            let result = (entry)(&mut self.data, &mut BuiltinArgs::new(args))
+                                .map_err(|e| self.error_1(e.into()))?;
 
                             self.push(result)?;
                         }
@@ -508,26 +493,15 @@ where
                                         .error(TypeError::NotCallable("context manager").into()))?,
                                 };
 
-                            let span = self
-                                .frame
-                                .closure
-                                .function
-                                .chunk
-                                .get_span(self.frame.ip - 1);
-
-                            let mut args = Vec::with_capacity(argc);
-                            args.resize(argc, (Value::None, span));
-
-                            for i in (0..argc).rev() {
-                                if self.sp == 0 {
-                                    return Err(self.error(OverflowError::StackUnderflow.into()));
-                                }
-                                self.sp -= 1;
-
-                                std::mem::swap(&mut self.stack[self.sp], &mut args[i].0)
+                            if self.sp < argc {
+                                return Err(self.error(OverflowError::StackUnderflow.into()));
                             }
 
-                            let result = self.eval_builtin(*builtin, args, span)?;
+                            let args = &self.stack[self.sp - argc..self.sp];
+                            self.sp -= argc;
+
+                            let result = (builtin)(&mut self.data, &mut BuiltinArgs::new(args))
+                                .map_err(|e| self.error_1(e.into()))?;
 
                             self.push(result)?;
                         }
@@ -810,28 +784,6 @@ where
                 }
             }
         }
-    }
-
-    #[inline]
-    fn eval_builtin(
-        &mut self,
-        func: BuiltinFnReg<Data>,
-        args: Vec<Spanned<Value>>,
-        span: Span,
-    ) -> Result<Value, ErrorS> {
-        let (s, mut e) = (span.0, span.1);
-
-        for (_, aspan) in args.iter() {
-            e = e.max(aspan.1);
-        }
-
-        let result = (func)(
-            &mut self.data,
-            &mut (args, Span(s.saturating_sub(1), e.saturating_add(1), span.2)),
-        )
-        .map_err(|e| Into::<ErrorS>::into(e))?;
-
-        Ok(result)
     }
 
     #[inline]

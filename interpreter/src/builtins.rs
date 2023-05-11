@@ -1,7 +1,4 @@
-use common::{
-    error::BuiltinError,
-    span::{Span, Spanned},
-};
+use common::error::BuiltinError;
 use fxhash::FxHashMap;
 
 use crate::{value::Value, vm};
@@ -38,7 +35,41 @@ impl_vmdata!(
 );
 
 /// a type alias representing args passed to a builtin function
-pub type BuiltinArgs = Spanned<Vec<Spanned<Value>>>;
+// pub type BuiltinArgs = Vec<Value>;
+pub struct BuiltinArgs<'a> {
+    args: &'a [Value],
+    idx: usize,
+}
+
+impl<'a> BuiltinArgs<'a> {
+    #[inline]
+    pub fn new(args: &'a [Value]) -> Self {
+        Self { args, idx: 0 }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.args.len()
+    }
+
+    #[inline]
+    pub fn next(&mut self) -> Option<&'a Value> {
+        let idx = self.idx;
+        self.idx += 1;
+        self.args.get(idx)
+    }
+
+    #[inline]
+    pub fn remaining(&mut self) -> &'a [Value] {
+        let idx = self.idx;
+        self.idx = self.args.len();
+        if idx == self.args.len() {
+            &[]
+        } else {
+            &self.args[idx..]
+        }
+    }
+}
 
 /// a type alias representing a builtin function
 pub type BuiltinFnReg<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, BuiltinError>;
@@ -61,7 +92,7 @@ pub type BuiltinAdderFn<const SS: usize, const CSS: usize, Data> = fn(&mut vm::V
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
-    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, BuiltinError>;
+    fn consume(&mut self, expected: &str) -> Result<&Value, BuiltinError>;
     fn stop(&mut self) -> Result<(), BuiltinError>;
 
     fn int(&mut self) -> Result<i32, BuiltinError>;
@@ -80,62 +111,61 @@ pub trait Consumable {
 }
 
 /// helper function to create a [`RuntimeError`] for when an unexpected value is encountered
-pub fn expected(got: &str, expected: &str, span: Span) -> BuiltinError {
+#[inline]
+pub fn expected(got: &str, expected: &str) -> BuiltinError {
     BuiltinError {
         msg: format!("expected `{}`, got `{}`", expected, got),
-        span,
         help: None,
     }
 }
 
-impl Consumable for BuiltinArgs {
-    fn consume(&mut self, expected: &str) -> Result<Spanned<Value>, BuiltinError> {
-        if self.0.len() != 0 {
-            Ok(self.0.remove(0))
+impl<'a> Consumable for BuiltinArgs<'a> {
+    fn consume(&mut self, expected: &str) -> Result<&'a Value, BuiltinError> {
+        if let Some(value) = self.next() {
+            Ok(value)
         } else {
             Err(BuiltinError {
                 msg: format!(
-                    "too litte arguments supplied to builtin, expected {}",
+                    "too litte arguments supplied to builtin, expected `{}`",
                     expected
                 ),
-                span: self.1.clone(),
                 help: None,
             })
         }
     }
 
     fn special(&mut self, id: &str) -> Result<usize, BuiltinError> {
-        let (value, span) = self.consume(id)?;
+        let value = self.consume(id)?;
 
         match value {
             Value::Special(special) => {
                 if id == special.0 {
                     Ok(special.1)
                 } else {
-                    Err(expected(special.0, id, span))
+                    Err(expected(special.0, id))
                 }
             }
-            _ => Err(expected(value.ntype(), id, span)),
+            _ => Err(expected(value.ntype(), id)),
         }
     }
 
     /// consumes the next argument as an integer, errors if the next argument is not an integer
     fn int(&mut self) -> Result<i32, BuiltinError> {
-        let (value, span) = self.consume("int")?;
+        let value = self.consume("int")?;
         match value {
-            Value::Int(i) => Ok(i),
-            Value::Float(f) => Ok(f as i32),
-            _ => Err(expected(value.ntype(), "int", span)),
+            Value::Int(i) => Ok(*i),
+            Value::Float(f) => Ok(*f as i32),
+            _ => Err(expected(value.ntype(), "int")),
         }
     }
 
     /// consumes the next argument as a float or int, errors if the next argument is not a float or int
     fn num(&mut self) -> Result<f32, BuiltinError> {
-        let (value, span) = self.consume("num")?;
+        let value = self.consume("num")?;
         match value {
-            Value::Int(i) => Ok(i as f32),
-            Value::Float(f) => Ok(f),
-            _ => Err(expected(value.ntype(), "num", span)),
+            Value::Int(i) => Ok(*i as f32),
+            Value::Float(f) => Ok(*f),
+            _ => Err(expected(value.ntype(), "num")),
         }
     }
 
@@ -143,81 +173,79 @@ impl Consumable for BuiltinArgs {
     ///
     /// if the next argument is a float, it will be clamped to the range [0, 255] and rounded
     fn u8(&mut self) -> Result<u8, BuiltinError> {
-        let (value, span) = self.consume("u8")?;
+        let value = self.consume("u8")?;
         match value {
-            Value::Int(i) => Ok(i.min(255).max(0) as u8),
+            Value::Int(i) => Ok((*i).min(255).max(0) as u8),
             Value::Float(f) => Ok((f * 255.0).min(255.0).max(0.0) as u8),
-            _ => Err(expected(value.ntype(), "u8", span)),
+            _ => Err(expected(value.ntype(), "u8")),
         }
     }
 
     /// consumes the next argument as a bool value, errors if the next argument is not a bool
     fn bool(&mut self) -> Result<bool, BuiltinError> {
-        let (value, span) = self.consume("bool")?;
+        let value = self.consume("bool")?;
         match value {
-            Value::Bool(b) => Ok(b),
-            _ => Err(expected(value.ntype(), "bool", span)),
+            Value::Bool(b) => Ok(*b),
+            _ => Err(expected(value.ntype(), "bool")),
         }
     }
 
     /// consume the next argument as a float, errors if the next argument cannot be a float
     fn float(&mut self) -> Result<f32, BuiltinError> {
-        let (value, span) = self.consume("float")?;
+        let value = self.consume("float")?;
         match value {
-            Value::Int(i) => Ok(i as f32),
-            Value::Float(f) => Ok(f),
-            _ => Err(expected(value.ntype(), "float", span)),
+            Value::Int(i) => Ok(*i as f32),
+            Value::Float(f) => Ok(*f),
+            _ => Err(expected(value.ntype(), "float")),
         }
     }
 
     /// consumes the next argument as a string, errors if the next argument is not a string
     fn str(&mut self) -> Result<String, BuiltinError> {
-        let (value, span) = self.consume("str")?;
+        let value = self.consume("str")?;
         match value {
             Value::String(s) => Ok(s.to_string()),
-            _ => Err(expected(value.ntype(), "str", span)),
+            _ => Err(expected(value.ntype(), "str")),
         }
     }
 
     /// consumes the next argument as a color, errors if the next argument is not a color
     fn color(&mut self) -> Result<[u8; 4], BuiltinError> {
-        let (value, span) = self.consume("color")?;
+        let value = self.consume("color")?;
         match value {
-            Value::Color(c) => Ok(c),
-            _ => Err(expected(value.ntype(), "color", span)),
+            Value::Color(c) => Ok(*c),
+            _ => Err(expected(value.ntype(), "color")),
         }
     }
 
     /// consumes the next argument as a list, errors if the next argument is not a list
     fn list(&mut self) -> Result<Vec<Value>, BuiltinError> {
-        let (value, span) = self.consume("list")?;
+        let value = self.consume("list")?;
         match value {
-            Value::Array(l) => Ok((*l).clone()),
+            Value::Array(l) => Ok(l.to_vec()),
             Value::Pair(pair) => Ok(vec![pair.0.clone(), pair.1.clone()]),
-            _ => Err(expected(value.ntype(), "list", span)),
+            _ => Err(expected(value.ntype(), "list")),
         }
     }
 
     fn pair(&mut self) -> Result<(Value, Value), BuiltinError> {
-        let (value, span) = self.consume("pair")?;
+        let value = self.consume("pair")?;
         match value {
             Value::Pair(pair) => Ok((pair.0.clone(), pair.1.clone())),
-            _ => Err(expected(value.ntype(), "pair", span)),
+            _ => Err(expected(value.ntype(), "pair")),
         }
     }
 
     /// consumes the rest of the arguments as a list
     fn rest(&mut self) -> Result<Vec<Value>, BuiltinError> {
-        Ok(self.0.drain(..).map(|(v, _)| v).collect())
+        Ok(self.remaining().to_vec())
     }
 
     /// errors if there are any arguments left
     fn stop(&mut self) -> Result<(), BuiltinError> {
-        if self.0.len() != 0 {
-            let item = self.0.remove(0);
+        if let Some(item) = self.next() {
             Err(BuiltinError {
-                msg: format!("too many arguments, got extra {}", item.0.ntype()).to_string(),
-                span: item.1,
+                msg: format!("too many arguments, got extra {}", item.ntype()).to_string(),
                 help: None,
             })
         } else {
@@ -227,8 +255,7 @@ impl Consumable for BuiltinArgs {
 
     /// consumes the next argument as a any value, errors if there are no arguments left
     fn any(&mut self) -> Result<Value, BuiltinError> {
-        let (value, _) = self.consume("any")?;
-        Ok(value)
+        self.consume("any").cloned()
     }
 }
 
@@ -243,18 +270,18 @@ macro_rules! generic_builtins {
 
            $(
                 fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<crate::value::Value, common::error::BuiltinError> {
-                        use crate::builtins::Consumable;
+                    use crate::builtins::Consumable;
 
-                        #[allow(unused_macros)]
-                        macro_rules! error {
-                            ($msg:expr) => {
-                                Err(common::error::BuiltinError {
-                                    msg: $msg,
-                                    span: args.1.clone(),
-                                    help: None,
-                                })
-                            };
-                        }
+                    #[allow(unused_macros)]
+                    macro_rules! error {
+                        ($msg:expr) => {
+                            Err(common::error::BuiltinError {
+                                msg: $msg,
+                                help: None,
+                            })
+                        };
+                    }
+
 
                     $(
                         let $arg = args.$type()?;
@@ -303,7 +330,6 @@ macro_rules! specific_builtins {
                         ($msg:expr) => {
                             Err(BuiltinError {
                                 msg: $msg,
-                                span: args.1.clone(),
                                 help: None,
                             })
                         };
@@ -314,7 +340,6 @@ macro_rules! specific_builtins {
                         ($msg:expr) => {
                             BuiltinError {
                                 msg: $msg,
-                                span: args.1.clone(),
                                 help: None,
                             }
                         };
@@ -385,7 +410,6 @@ macro_rules! context_builtins {
                         ($msg:expr) => {
                             Err(BuiltinError {
                                 msg: $msg,
-                                span: args.1.clone(),
                                 help: None,
                             })?
                         };
@@ -406,7 +430,6 @@ macro_rules! context_builtins {
                         ($msg:expr) => {
                             Err(BuiltinError {
                                 msg: $msg,
-                                span: args.1.clone(),
                                 help: None,
                             })?
                         };
