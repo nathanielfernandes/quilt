@@ -49,7 +49,7 @@ impl<'a> BuiltinArgs<'a> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.args.len()
+        self.args.len() - self.idx
     }
 
     #[inline]
