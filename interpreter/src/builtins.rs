@@ -1,4 +1,4 @@
-use common::error::BuiltinError;
+use common::error::{BuiltinError, Error, TypeError};
 use fxhash::FxHashMap;
 
 use crate::{value::Value, vm};
@@ -36,12 +36,12 @@ impl_vmdata!(
 
 /// a type alias representing args passed to a builtin function
 // pub type BuiltinArgs = Vec<Value>;
-pub struct BuiltinArgs<'a> {
+pub struct BuiltinArgsContainer<'a> {
     args: &'a [Value],
     idx: usize,
 }
 
-impl<'a> BuiltinArgs<'a> {
+impl<'a> BuiltinArgsContainer<'a> {
     #[inline]
     pub fn new(args: &'a [Value]) -> Self {
         Self { args, idx: 0 }
@@ -71,11 +71,12 @@ impl<'a> BuiltinArgs<'a> {
     }
 }
 
+pub type BuiltinArgs<'a> = &'a [Value];
 /// a type alias representing a builtin function
-pub type BuiltinFnReg<Data> = fn(&mut Data, &mut BuiltinArgs) -> Result<Value, BuiltinError>;
+pub type BuiltinFnReg<Data> = fn(&mut Data, &BuiltinArgs) -> Result<Value, Error>;
 
 pub type ContextEntry<Data> = BuiltinFnReg<Data>;
-pub type ContextExit<Data> = fn(&mut Data) -> Result<(), BuiltinError>;
+pub type ContextExit<Data> = fn(&mut Data) -> Result<(), Error>;
 
 #[derive(Clone, Copy)]
 pub enum BuiltinFn<Data> {
@@ -86,41 +87,37 @@ pub enum BuiltinFn<Data> {
 
 /// a type alias representing a map of builtin functions
 pub type BuiltinFnMap<Data> = FxHashMap<u16, BuiltinFn<Data>>;
-
 pub type BuiltinList<const N: usize, Data> = [(String, BuiltinFn<Data>); N];
 pub type BuiltinAdderFn<const SS: usize, const CSS: usize, Data> = fn(&mut vm::VM<SS, CSS, Data>);
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
-    fn consume(&mut self, expected: &str) -> Result<&Value, BuiltinError>;
-    fn stop(&mut self) -> Result<(), BuiltinError>;
+    fn consume(&mut self, expected: &str) -> Result<&Value, Error>;
+    fn stop(&mut self) -> Result<(), Error>;
 
-    fn int(&mut self) -> Result<i32, BuiltinError>;
-    fn u8(&mut self) -> Result<u8, BuiltinError>;
-    fn bool(&mut self) -> Result<bool, BuiltinError>;
-    fn float(&mut self) -> Result<f32, BuiltinError>;
-    fn num(&mut self) -> Result<f32, BuiltinError>;
-    fn str(&mut self) -> Result<String, BuiltinError>;
-    fn color(&mut self) -> Result<[u8; 4], BuiltinError>;
-    fn list(&mut self) -> Result<Vec<Value>, BuiltinError>;
-    fn pair(&mut self) -> Result<(Value, Value), BuiltinError>;
-    fn rest(&mut self) -> Result<Vec<Value>, BuiltinError>;
-    fn any(&mut self) -> Result<Value, BuiltinError>;
+    fn int(&mut self) -> Result<i32, Error>;
+    fn u8(&mut self) -> Result<u8, Error>;
+    fn bool(&mut self) -> Result<bool, Error>;
+    fn float(&mut self) -> Result<f32, Error>;
+    fn num(&mut self) -> Result<f32, Error>;
+    fn str(&mut self) -> Result<String, Error>;
+    fn color(&mut self) -> Result<[u8; 4], Error>;
+    fn list(&mut self) -> Result<Vec<Value>, Error>;
+    fn pair(&mut self) -> Result<(Value, Value), Error>;
+    fn rest(&mut self) -> Result<Vec<Value>, Error>;
+    fn any(&mut self) -> Result<Value, Error>;
 
-    fn special(&mut self, id: &str) -> Result<usize, BuiltinError>;
+    fn special(&mut self, id: &'static str) -> Result<usize, Error>;
 }
 
 /// helper function to create a [`RuntimeError`] for when an unexpected value is encountered
 #[inline]
-pub fn expected(got: &str, expected: &str) -> BuiltinError {
-    BuiltinError {
-        msg: format!("expected `{}`, got `{}`", expected, got),
-        help: None,
-    }
+pub fn expected(got: &'static str, expected: &'static str) -> Error {
+    TypeError::Expected(expected, got).into()
 }
 
-impl<'a> Consumable for BuiltinArgs<'a> {
-    fn consume(&mut self, expected: &str) -> Result<&'a Value, BuiltinError> {
+impl<'a> Consumable for BuiltinArgsContainer<'a> {
+    fn consume(&mut self, expected: &str) -> Result<&'a Value, Error> {
         if let Some(value) = self.next() {
             Ok(value)
         } else {
@@ -130,11 +127,12 @@ impl<'a> Consumable for BuiltinArgs<'a> {
                     expected
                 ),
                 help: None,
-            })
+            }
+            .into())
         }
     }
 
-    fn special(&mut self, id: &str) -> Result<usize, BuiltinError> {
+    fn special(&mut self, id: &'static str) -> Result<usize, Error> {
         let value = self.consume(id)?;
 
         match value {
@@ -150,7 +148,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the next argument as an integer, errors if the next argument is not an integer
-    fn int(&mut self) -> Result<i32, BuiltinError> {
+    fn int(&mut self) -> Result<i32, Error> {
         let value = self.consume("int")?;
         match value {
             Value::Int(i) => Ok(*i),
@@ -160,7 +158,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the next argument as a float or int, errors if the next argument is not a float or int
-    fn num(&mut self) -> Result<f32, BuiltinError> {
+    fn num(&mut self) -> Result<f32, Error> {
         let value = self.consume("num")?;
         match value {
             Value::Int(i) => Ok(*i as f32),
@@ -172,7 +170,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     /// consumes the next argument as a u8 value, errors if the next argument is not a u8
     ///
     /// if the next argument is a float, it will be clamped to the range [0, 255] and rounded
-    fn u8(&mut self) -> Result<u8, BuiltinError> {
+    fn u8(&mut self) -> Result<u8, Error> {
         let value = self.consume("u8")?;
         match value {
             Value::Int(i) => Ok((*i).min(255).max(0) as u8),
@@ -182,7 +180,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the next argument as a bool value, errors if the next argument is not a bool
-    fn bool(&mut self) -> Result<bool, BuiltinError> {
+    fn bool(&mut self) -> Result<bool, Error> {
         let value = self.consume("bool")?;
         match value {
             Value::Bool(b) => Ok(*b),
@@ -191,7 +189,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consume the next argument as a float, errors if the next argument cannot be a float
-    fn float(&mut self) -> Result<f32, BuiltinError> {
+    fn float(&mut self) -> Result<f32, Error> {
         let value = self.consume("float")?;
         match value {
             Value::Int(i) => Ok(*i as f32),
@@ -201,7 +199,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the next argument as a string, errors if the next argument is not a string
-    fn str(&mut self) -> Result<String, BuiltinError> {
+    fn str(&mut self) -> Result<String, Error> {
         let value = self.consume("str")?;
         match value {
             Value::String(s) => Ok(s.to_string()),
@@ -210,7 +208,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the next argument as a color, errors if the next argument is not a color
-    fn color(&mut self) -> Result<[u8; 4], BuiltinError> {
+    fn color(&mut self) -> Result<[u8; 4], Error> {
         let value = self.consume("color")?;
         match value {
             Value::Color(c) => Ok(*c),
@@ -219,7 +217,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the next argument as a list, errors if the next argument is not a list
-    fn list(&mut self) -> Result<Vec<Value>, BuiltinError> {
+    fn list(&mut self) -> Result<Vec<Value>, Error> {
         let value = self.consume("list")?;
         match value {
             Value::Array(l) => Ok(l.to_vec()),
@@ -228,7 +226,7 @@ impl<'a> Consumable for BuiltinArgs<'a> {
         }
     }
 
-    fn pair(&mut self) -> Result<(Value, Value), BuiltinError> {
+    fn pair(&mut self) -> Result<(Value, Value), Error> {
         let value = self.consume("pair")?;
         match value {
             Value::Pair(pair) => Ok((pair.0.clone(), pair.1.clone())),
@@ -237,26 +235,45 @@ impl<'a> Consumable for BuiltinArgs<'a> {
     }
 
     /// consumes the rest of the arguments as a list
-    fn rest(&mut self) -> Result<Vec<Value>, BuiltinError> {
+    fn rest(&mut self) -> Result<Vec<Value>, Error> {
         Ok(self.remaining().to_vec())
     }
 
     /// errors if there are any arguments left
-    fn stop(&mut self) -> Result<(), BuiltinError> {
+    fn stop(&mut self) -> Result<(), Error> {
         if let Some(item) = self.next() {
             Err(BuiltinError {
                 msg: format!("too many arguments, got extra {}", item.ntype()).to_string(),
                 help: None,
-            })
+            }
+            .into())
         } else {
             Ok(())
         }
     }
 
     /// consumes the next argument as a any value, errors if there are no arguments left
-    fn any(&mut self) -> Result<Value, BuiltinError> {
+    fn any(&mut self) -> Result<Value, Error> {
         self.consume("any").cloned()
     }
+}
+
+#[inline]
+pub fn error<S: Into<String>>(msg: S) -> Error {
+    BuiltinError {
+        msg: msg.into(),
+        help: None,
+    }
+    .into()
+}
+
+#[inline]
+pub fn error_with_help<S: Into<String>, H: Into<String>>(msg: S, help: H) -> Error {
+    BuiltinError {
+        msg: msg.into(),
+        help: Some(help.into()),
+    }
+    .into()
 }
 
 /// a macro to define builtin functions
@@ -269,19 +286,10 @@ macro_rules! generic_builtins {
     } => {
 
            $(
-                fn $name<Data>(_: &mut Data, args: &mut crate::builtins::BuiltinArgs) -> Result<crate::value::Value, common::error::BuiltinError> {
+                fn $name<Data>(_: &mut Data, args: &crate::builtins::BuiltinArgs) -> Result<crate::value::Value, common::error::Error> {
                     use crate::builtins::Consumable;
 
-                    #[allow(unused_macros)]
-                    macro_rules! error {
-                        ($msg:expr) => {
-                            Err(common::error::BuiltinError {
-                                msg: $msg,
-                                help: None,
-                            })
-                        };
-                    }
-
+                    let mut args = crate::builtins::BuiltinArgsContainer::new(args);
 
                     $(
                         let $arg = args.$type()?;
@@ -323,31 +331,11 @@ macro_rules! specific_builtins {
 
            $(
                $(#[doc = $doc])*
-               pub fn $name($data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, BuiltinError> {
-
-                    #[allow(unused_macros)]
-                    macro_rules! error {
-                        ($msg:expr) => {
-                            Err(BuiltinError {
-                                msg: $msg,
-                                help: None,
-                            })
-                        };
-                    }
-
-                    #[allow(unused_macros)]
-                    macro_rules! err {
-                        ($msg:expr) => {
-                            BuiltinError {
-                                msg: $msg,
-                                help: None,
-                            }
-                        };
-                    }
-
-                   $(
+               pub fn $name($data: &mut $datatype, args: &BuiltinArgs) -> Result<Value, Error> {
+                    let mut args = BuiltinArgsContainer::new(args);
+                    $(
                        let $arg = args.$type()?;
-                   )*
+                    )*
 
                    args.stop()?;
                    Ok($body)
@@ -399,41 +387,22 @@ macro_rules! context_builtins {
         )*
     } => {
             use quilt::prelude::*;
+            use quilt::prelude::builtins::*;
 
            $(
 
                 $(#[doc = $start_doc])*
-                pub fn $start_name($start_data: &mut $datatype, args: &mut BuiltinArgs) -> Result<Value, BuiltinError> {
-
-                    #[allow(unused_macros)]
-                    macro_rules! error {
-                        ($msg:expr) => {
-                            Err(BuiltinError {
-                                msg: $msg,
-                                help: None,
-                            })?
-                        };
-                    }
-
-                   $(
+                pub fn $start_name($start_data: &mut $datatype, args: &BuiltinArgs) -> Result<Value, Error> {
+                   let mut args = BuiltinArgsContainer::new(args);
+                    $(
                        let $arg = args.$type()?;
                    )*
-
                    args.stop()?;
                    Ok($start_body)
                 }
 
                 $(#[doc = $end_doc])*
-                pub fn $end_name($end_data: &mut $datatype) -> Result<(), BuiltinError> {
-                    #[allow(unused_macros)]
-                    macro_rules! error {
-                        ($msg:expr) => {
-                            Err(BuiltinError {
-                                msg: $msg,
-                                help: None,
-                            })?
-                        };
-                    }
+                pub fn $end_name($end_data: &mut $datatype) -> Result<(), Error> {
                     $end_body
                     Ok(())
                 }

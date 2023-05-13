@@ -1,20 +1,17 @@
 use std::{io::Write, rc::Rc};
 
+use common::error::{Error, TypeError};
 use rand::Rng;
 
-use crate::{generic_builtins, value::Value};
+use crate::{builtins::error, generic_builtins, value::Value};
 
 generic_builtins! {
     [export=core]
 
-    fn @err(msg: str) {
-        error!(msg)?
-    }
-
     fn @get(list: list, index: int) {
         let index = if index < 0 {
             if -index > list.len() as i32 {
-                error!(format!("index {} out of bounds", index))?
+                Err(Error::IndexError(index as usize))?
             } else {
                 list.len() as i32 + index
             }
@@ -26,9 +23,7 @@ generic_builtins! {
         if let Some(v) = list.get(index as usize) {
             v.clone()
         } else {
-            error!(
-                format!("index {} out of bounds", index)
-            )?
+            Err(Error::IndexError(index as usize))?
         }
     }
 
@@ -38,7 +33,7 @@ generic_builtins! {
         // only allow negative indices if they are in bounds
         let start = if start < 0 {
             if -start > len {
-                error!(format!("index {} out of bounds", start))?
+                Err(Error::IndexError(start as usize))?
             } else {
                 len + start
             }
@@ -48,7 +43,7 @@ generic_builtins! {
 
         let end = if end < 0 {
             if -end > len {
-                error!(format!("index {} out of bounds", end))?
+                Err(Error::IndexError(start as usize))?
             } else {
                 len + end
             }
@@ -57,7 +52,7 @@ generic_builtins! {
         };
 
         if start > end {
-            error!(format!("start index is greater than end index"))?
+            Err(error("start index is greater than end index"))?
         }
 
         list[start as usize..end as usize].to_vec().into()
@@ -73,9 +68,9 @@ generic_builtins! {
             Value::Float(f) => Value::Int(f as i32),
             Value::String(s) => match s.parse::<i32>() {
                 Ok(i) => Value::Int(i),
-                Err(_) => error!(format!("could not parse '{}' as `{}`", s, "int"))?,
+                Err(_) => Err(TypeError::ParseError(s.to_string(), "int"))?,
             },
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  arg.ntype(), "int"))?,
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "int"))?,
         }
     }
 
@@ -85,9 +80,9 @@ generic_builtins! {
             Value::Float(f) => Value::Float(f),
             Value::String(s) => match s.parse::<f32>() {
                 Ok(f) => Value::Float(f),
-                Err(_) => error!(format!("could not parse '{}' as `{}`", s, "float").to_string())?,
+                Err(_) => Err(TypeError::ParseError(s.to_string(), "float"))?,
             },
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  arg.ntype(), "float"))?,
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "int"))?,
         }
     }
 
@@ -98,9 +93,9 @@ generic_builtins! {
             Value::Float(f) => Value::Bool(f != 0.0),
             Value::String(s) => match s.parse::<bool>() {
                 Ok(b) => Value::Bool(b),
-                Err(_) => error!(format!("could not parse '{}' as `{}`", s, "bool").to_string())?,
+                Err(_) => Err(TypeError::ParseError(s.to_string(), "bool"))?,
             },
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  arg.ntype(), "bool"))?,
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "bool"))?,
         }
     }
 
@@ -108,7 +103,7 @@ generic_builtins! {
         match arg {
             Value::Array(l) => Value::Int(l.len() as i32),
             Value::String(s) => Value::Int(s.len() as i32),
-            _ => error!(format!("type `{}` cannot be converted to `{}`", arg.ntype(), "len"))?,
+            _ => Err(error(format!("type `{}` has no length", arg.ntype())))?,
         }
     }
 
@@ -174,7 +169,7 @@ generic_builtins! {
             (Value::Float(a), Value::Float(b)) => Value::Float(a.min(*b)),
             (Value::Int(a), Value::Float(b)) => Value::Float((*a as f32).min(*b) ),
             (Value::Float(a), Value::Int(b)) => Value::Float(a.min(*b as f32)),
-            _ => error!(format!("type `{}` cannot be compared to `{}`",  a.ntype(), b.ntype()))?,
+            _ => Err(TypeError::CannotCompare(a.ntype(), b.ntype()))?,
         }
     }
 
@@ -184,7 +179,7 @@ generic_builtins! {
             (Value::Float(a), Value::Float(b)) => Value::Float(a.max(*b)),
             (Value::Int(a), Value::Float(b)) => Value::Float((*a as f32).max(*b) ),
             (Value::Float(a), Value::Int(b)) => Value::Float(a.max(*b as f32)),
-            _ => error!(format!("type `{}` cannot be compared to `{}`",  a.ntype(), b.ntype()))?,
+            _ => Err(TypeError::CannotCompare(a.ntype(), b.ntype()))?,
         }
     }
 
@@ -192,7 +187,7 @@ generic_builtins! {
         match a {
             Value::Int(i) => Value::Int(i),
             Value::Float(f) => Value::Int(f.round() as i32),
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  a.ntype(), "int"))?,
+            _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
 
@@ -200,7 +195,7 @@ generic_builtins! {
         match a {
             Value::Int(i) => Value::Int(i),
             Value::Float(f) => Value::Int(f.floor() as i32),
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  a.ntype(), "int"))?,
+            _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
 
@@ -208,7 +203,7 @@ generic_builtins! {
         match a {
             Value::Int(i) => Value::Int(i),
             Value::Float(f) => Value::Int(f.ceil() as i32),
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  a.ntype(), "int"))?,
+            _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
 
@@ -219,8 +214,7 @@ generic_builtins! {
             (Value::Float(f), 0) => Value::Int(*f as i32),
             (Value::Int(i), d) => Value::Float(((*i as f32) * 10.0f32.powi(d)).round() / 10.0f32.powi(d)),
             (Value::Float(f), d) => Value::Float((*f * 10.0f32.powi(d)).round() / 10.0f32.powi(d)),
-            _ => error!(format!("type `{}` cannot be converted to `{}`",  a.ntype(), "int"))?,
-
+            _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
 
@@ -235,7 +229,7 @@ generic_builtins! {
             (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min as f32)),
             (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*max as f32).min(*min)),
 
-            _ => error!(format!("type `{}` cannot be compared with given range",  a.ntype()))?,
+            _ => Err(error(format!("type `{}` cannot be clamped with the given range", a.ntype())))?,
         }
     }
 
@@ -243,7 +237,7 @@ generic_builtins! {
         match a {
             Value::Int(a) => Value::Int(a.abs()),
             Value::Float(a) => Value::Float(a.abs()),
-            _ => error!(format!("type `{}` cannot be compared to `{}`",  a.ntype(), "abs"))?,
+            _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
 
@@ -285,7 +279,7 @@ generic_builtins! {
 
     fn @randint(start: int, end: int) {
         if start >= end {
-            error!("start must be less than end".to_string())?
+            Err(error("start must be less than end"))?
         }
 
         Value::Int(rand::thread_rng().gen_range(start..end))
@@ -293,7 +287,7 @@ generic_builtins! {
 
     fn @randfloat(start: float, end: float) {
         if start >= end {
-            error!("start must be less than end".to_string())?
+            Err(error("start must be less than end"))?
         }
 
         Value::Float(rand::thread_rng().gen_range(start..end))
@@ -402,10 +396,10 @@ generic_builtins! {
             if let Ok(_) = std::io::stdin().read_line(&mut input) {
                 Value::String(Rc::new(input.trim().to_string()))
             } else {
-                error!("could not read input".to_string())?
+                Err(error("could not read input".to_string()))?
             }
         } else {
-            error!("could not flush stdout".to_string())?
+            Err(error("could not flush stdout".to_string()))?
         }
     }
 }

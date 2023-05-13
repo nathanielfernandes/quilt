@@ -42,6 +42,9 @@ pub enum Error {
     #[error("SyntaxError: {0}")]
     SyntaxError(SyntaxError),
 
+    #[error("index `{0}` out of bounds")]
+    IndexError(usize),
+
     #[error("Division by zero")]
     ZeroDivisionError,
 
@@ -100,6 +103,7 @@ impl NamedError for Error {
             Error::BuiltinError(e) => e.name(),
             Error::IncludeError(e) => e.name(),
             Error::SyntaxError(e) => e.name(),
+            Error::IndexError(_) => "IndexError",
             Error::ZeroDivisionError => "ZeroDivisionError",
             Error::RuntimeLimitExceeded(_) => "RuntimeLimitExceeded",
             Error::Halt => "Halt",
@@ -111,6 +115,16 @@ impl NamedError for Error {
 pub enum TypeError {
     #[error("expected `{0}` got `{1}`")]
     Expected(ValueType, ValueType),
+
+    // error for trying to convert types
+    #[error("cannot convert `{0}` to `{1}`")]
+    CannotConvert(ValueType, ValueType),
+
+    #[error("cannot compare `{0}` and `{1}`")]
+    CannotCompare(ValueType, ValueType),
+
+    #[error("cannot parse '{0}' as `{1}`")]
+    ParseError(String, ValueType),
 
     #[error("function '{name}' expected `{expected}` arguments got `{got}`")]
     MismatchedArity { name: String, expected: u8, got: u8 },
@@ -145,6 +159,9 @@ impl NamedError for TypeError {
     fn name(&self) -> &'static str {
         match self {
             Self::Expected(_, _) => "Expected",
+            Self::CannotConvert(_, _) => "CannotConvert",
+            Self::CannotCompare(_, _) => "CannotCompare",
+            Self::ParseError(_, _) => "ParseError",
             Self::MismatchedArity { .. } => "MismatchedArity",
             Self::NotCallable(_) => "NotCallable",
             Self::UnsupportedBinaryOperation { .. } => "UnsupportedBinaryOperation",

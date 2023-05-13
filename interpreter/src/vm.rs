@@ -6,9 +6,7 @@ use common::{error::*, pool::Pool};
 use fxhash::FxHashMap;
 
 use crate::{
-    builtins::{
-        BuiltinAdderFn, BuiltinArgs, BuiltinFn, BuiltinFnMap, BuiltinList, ContextExit, VmData,
-    },
+    builtins::{BuiltinAdderFn, BuiltinFn, BuiltinFnMap, BuiltinList, ContextExit, VmData},
     value::{Closure, Upvalue, Value},
     Script,
 };
@@ -435,10 +433,6 @@ where
                     if let Some(exit) = self.exit_fn_stack.pop() {
                         exit(&mut self.data).map_err(|e| self.error_1(e.into()))?;
                     }
-                    // no need to check for stack underflow here
-                    // else {
-                    //     return Err(self.error(OverflowError::StackUnderflow.into()));
-                    // }
                 }
 
                 EnterContext => {
@@ -463,7 +457,7 @@ where
                                 self.exit_fn_stack.push(*exit);
                             }
 
-                            let result = (entry)(&mut self.data, &mut BuiltinArgs::new(args))
+                            let result = (entry)(&mut self.data, &args)
                                 .map_err(|e| self.error_1(e.into()))?;
 
                             self.push(result)?;
@@ -500,7 +494,7 @@ where
                             let args = &self.stack[self.sp - argc..self.sp];
                             self.sp -= argc;
 
-                            let result = (builtin)(&mut self.data, &mut BuiltinArgs::new(args))
+                            let result = (builtin)(&mut self.data, &args)
                                 .map_err(|e| self.error_1(e.into()))?;
 
                             self.push(result)?;
@@ -822,15 +816,6 @@ where
             if upvalue.borrow().is_open_at(last) {
                 upvalue.replace(Upvalue::Closed(value.clone()));
             }
-
-            // if let Upvalue::Open(l) = *upvalue.borrow() {
-            //     if l >= last {
-            //         let value = self.stack[l].clone();
-            //         upvalue.replace(Upvalue::Closed(value));
-
-            //         // self.open_upvalues.swap_remove(idx);
-            //     }
-            // }
         }
 
         self.open_upvalues
