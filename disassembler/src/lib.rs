@@ -345,10 +345,10 @@ impl View for Value {
                 }
             }
             Value::Pair(l) => format!("({}, {})", l.0.display(), l.1.display()),
-            Value::Spread(s) => format!(
-                "...[{}]",
-                s.iter().map(|c| c.display()).collect::<Vec<_>>().join(", ")
-            ),
+            // Value::Spread(s) => format!(
+            //     "...[{}]",
+            //     s.iter().map(|c| c.display()).collect::<Vec<_>>().join(", ")
+            // ),
             Value::Special(spec) => format!("<{} id={}>", spec.0, spec.1),
             Value::Function(f) => format!("<func {}>", f.name.0).cyan().to_string(),
             Value::Closure(c) => format!("<closure {}>", c.function.name.0)

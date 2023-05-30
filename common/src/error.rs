@@ -221,6 +221,9 @@ pub enum OverflowError {
 
     #[error("jump too large")]
     JumpTooLarge,
+
+    #[error("value too large")]
+    ValueTooLarge,
 }
 
 impl NamedError for OverflowError {
@@ -234,6 +237,7 @@ impl NamedError for OverflowError {
             Self::StackUnderflow => "StackUnderflow",
             Self::InstructionOverflow => "InstructionOverflow",
             Self::JumpTooLarge => "JumpTooLarge",
+            Self::ValueTooLarge => "ValueTooLarge",
         }
     }
 }

@@ -5,6 +5,7 @@ use common::{
     error::*,
     pool::Pool,
     span::{Span, Spanned},
+    vecc::Vecc,
 };
 use interpreter::{
     value::{Function, Value},
@@ -956,7 +957,9 @@ pub fn literal_to_value(literal: &Literal) -> Value {
         Literal::Float(n) => Value::Float(*n),
         Literal::Color(c) => Value::Color(*c),
         Literal::String(s) => Value::String(Rc::new(s.clone())),
-        Literal::Array(arr) => Value::Array(Rc::new(arr.iter().map(literal_to_value).collect())),
+        Literal::Array(arr) => Value::Array(Rc::new(Vecc::new_from(
+            arr.iter().map(literal_to_value).collect(),
+        ))),
         Literal::Pair(l, r) => Value::Pair(Rc::new((literal_to_value(l), literal_to_value(r)))),
         Literal::Range(s, e) => Value::Range(*s, *e),
     }

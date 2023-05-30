@@ -1,6 +1,11 @@
 use std::rc::Rc;
 
-use common::error::{Error, TypeError};
+use common::{
+    error::{Error, OverflowError, TypeError},
+    vecc::GetSize,
+};
+
+use crate::value::MAX_VALUE_SIZE;
 
 use super::value::Value;
 
@@ -68,6 +73,10 @@ impl Value {
     pub fn add(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::String(lhs), Value::String(rhs)) => {
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
                 Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
             }
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
@@ -124,7 +133,15 @@ impl Value {
                     .into());
                 }
 
-                Ok(Value::String(Rc::new(lhs.repeat((*rhs).min(256) as usize))))
+                // let rhs = *rhs.min(&256) as usize;
+                let rhs = *rhs as usize;
+
+                // check if string is too long
+                if lhs.len() * rhs > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs.repeat(rhs))))
             }
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs * rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs * rhs)),
@@ -325,33 +342,92 @@ impl Value {
     pub fn join(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::String(lhs), Value::String(rhs)) => {
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
                 Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
             }
             (Value::String(lhs), Value::Int(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + &rhs.to_string())))
+                let rhs = rhs.to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs.to_string() + &rhs)))
             }
             (Value::String(lhs), Value::Float(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + &rhs.to_string())))
+                let rhs = rhs.to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs.to_string() + &rhs)))
             }
             (Value::String(lhs), Value::Bool(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + &rhs.to_string())))
+                let rhs = rhs.to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs.to_string() + &rhs)))
             }
             (Value::String(lhs), Value::None) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + "none")))
+                let rhs = "none".to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs.to_string() + &rhs)))
             }
             (Value::Int(lhs), Value::String(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
+                let lhs = lhs.to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs + rhs)))
             }
             (Value::Float(lhs), Value::String(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
+                let lhs = lhs.to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs + rhs)))
             }
             (Value::Bool(lhs), Value::String(rhs)) => {
-                Ok(Value::String(Rc::new(lhs.to_string() + rhs)))
-            }
+                let lhs = lhs.to_string();
 
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs + rhs)))
+            }
+            (Value::None, Value::String(rhs)) => {
+                let lhs = "none".to_string();
+
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
+                Ok(Value::String(Rc::new(lhs + rhs)))
+            }
             (Value::Array(lhs), Value::Array(rhs)) => {
+                if lhs.get_size() + rhs.get_size() > MAX_VALUE_SIZE {
+                    return Err(OverflowError::ValueTooLarge.into());
+                }
+
                 let mut new_list = (**lhs).clone();
-                new_list.extend((**rhs).clone());
+                new_list.extend(rhs.to_vec())?;
+
                 Ok(Value::Array(Rc::new(new_list)))
             }
 

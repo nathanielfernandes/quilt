@@ -29,7 +29,6 @@ Quilt is a hobby project of mine. I designed it to be a simple, with a syntax si
 - Spread operator
 - Short circuiting
 - `break` and `continue` statements
-- `return` statements
 - user created errors and error handling
 - repl
 

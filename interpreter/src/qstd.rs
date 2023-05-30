@@ -1,12 +1,44 @@
 use std::{io::Write, rc::Rc};
 
-use common::error::{Error, TypeError};
+use common::{
+    error::{Error, TypeError},
+    vecc::GetSize,
+};
 use rand::Rng;
 
-use crate::{builtins::error, generic_builtins, value::Value};
+use crate::{
+    builtins::{error, VmData},
+    generic_builtins,
+    value::Value,
+    vm::VM,
+};
+
+#[inline]
+pub fn std<const SS: usize, const CSS: usize, Data>(vm: &mut VM<SS, CSS, Data>)
+where
+    Data: VmData,
+{
+    vm.add_builtins(core);
+    vm.add_builtins(math);
+    vm.add_builtins(strings);
+}
+
+#[inline]
+pub fn stdio<const SS: usize, const CSS: usize, Data>(vm: &mut VM<SS, CSS, Data>)
+where
+    Data: VmData,
+{
+    vm.add_builtins(std);
+    vm.add_builtins(io);
+}
 
 generic_builtins! {
     [export=core]
+
+
+    fn @sizeof(arg: any) {
+        (arg.get_size() as i32).into()
+    }
 
     fn @get(list: list, index: int) {
         let index = if index < 0 {
@@ -105,10 +137,6 @@ generic_builtins! {
             Value::String(s) => Value::Int(s.len() as i32),
             _ => Err(error(format!("type `{}` has no length", arg.ntype())))?,
         }
-    }
-
-    fn @list(start: u8, end: u8) {
-        Value::Array(Rc::new((start..end).map(|i| Value::Int(i as i32)).collect()))
     }
 
     fn @rgba(r: u8, g: u8, b: u8, a: u8) {

@@ -20,6 +20,7 @@ pub mod prelude {
     pub use common::error::*;
     pub use common::sourcecache::SourceCache;
     pub use common::span::{Span, Spanned};
+    pub use common::vecc::{GetSize, Vecc};
 
     pub use disassembler::Disassembler;
 

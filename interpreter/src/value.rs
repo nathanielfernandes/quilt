@@ -6,7 +6,29 @@ use std::{
 };
 
 use bytecode::chunk::Chunk;
-use common::span::Spanned;
+use common::{
+    error::Error,
+    span::Spanned,
+    vecc::{GetSize, Vecc},
+};
+
+// max single value size is 256kb
+pub const MAX_VALUE_SIZE: usize = 1024 * 256;
+
+impl GetSize for Value {
+    #[inline]
+    fn get_size(&self) -> usize {
+        match self {
+            Value::String(s) => s.len(),
+            Value::Array(l) => l.get_size(),
+            Value::Pair(pair) => {
+                let (a, b) = pair.as_ref();
+                a.get_size() + b.get_size()
+            }
+            _ => 0x10,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -20,13 +42,13 @@ pub enum Value {
     String(Rc<String>),
     Special(Box<(&'static str, usize)>),
 
-    Array(Rc<Vec<Value>>),
+    Array(Rc<Vecc<Value, MAX_VALUE_SIZE>>),
 
     // specialized value for looping
     LoopCtx(usize),
 
     Pair(Rc<(Value, Value)>),
-    Spread(Rc<Vec<Value>>),
+    // Spread(Rc<Vec<Value>>),
     Function(Rc<Function>),
     Closure(Rc<Closure>),
 }
@@ -52,15 +74,15 @@ impl std::fmt::Display for Value {
             }
             Value::Pair(pair) => write!(f, "({}, {})", pair.0, pair.1),
             Value::Range(l, r) => write!(f, "{}:{}", l, r),
-            Value::Spread(l) => {
-                for (i, v) in l.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", v)?;
-                }
-                Ok(())
-            }
+            // Value::Spread(l) => {
+            //     for (i, v) in l.iter().enumerate() {
+            //         if i > 0 {
+            //             write!(f, ", ")?;
+            //         }
+            //         write!(f, "{}", v)?;
+            //     }
+            //     Ok(())
+            // }
             Value::Special(special) => write!(f, "<special id={} value={}>", special.0, special.1),
 
             Value::Function(func) => write!(f, "<function {}>", func.name.0),
@@ -85,7 +107,7 @@ impl Value {
             Value::Special(s) => s.0,
             Value::Array(_) => "list",
             Value::Pair(_) => "pair",
-            Value::Spread(_) => "spread",
+            // Value::Spread(_) => "spread",
             Value::Function(_) => "function",
             Value::Closure(_) => "closure",
             Value::LoopCtx(_) => "loop_ctx",
@@ -111,7 +133,7 @@ impl Hash for Value {
             Value::Special(s) => s.hash(state),
             Value::Array(l) => l.hash(state),
             Value::Pair(p) => p.hash(state),
-            Value::Spread(s) => s.hash(state),
+            // Value::Spread(s) => s.hash(state),
             Value::Function(f) => f.hash(state),
             Value::Closure(c) => c.hash(state),
             Value::LoopCtx(idx) => idx.hash(state),
@@ -314,8 +336,14 @@ impl<L: Into<Value>, R: Into<Value>> From<(L, R)> for Value {
     }
 }
 
+pub fn make_value_array(values: Vec<Value>) -> Result<Value, Error> {
+    Vecc::try_new_from(values).map(|v| Value::Array(Rc::new(v)))
+}
+
 impl<T: Into<Value>> From<Vec<T>> for Value {
     fn from(v: Vec<T>) -> Self {
-        Value::Array(Rc::new(v.into_iter().map(|v| v.into()).collect()))
+        Value::Array(Rc::new(Vecc::new_from(
+            v.into_iter().map(|v| v.into()).collect(),
+        )))
     }
 }

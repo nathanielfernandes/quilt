@@ -2,7 +2,11 @@ use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
 
 use arrayvec::ArrayVec;
 use bytecode::bytecode::*;
-use common::{error::*, pool::Pool};
+use common::{
+    error::*,
+    pool::Pool,
+    vecc::{GetSize, Vecc},
+};
 use fxhash::FxHashMap;
 
 use crate::{
@@ -75,6 +79,18 @@ where
             start_time: std::time::Instant::now(),
             max_runtime: std::time::Duration::MAX,
         }
+    }
+
+    pub fn new_with(
+        data: Data,
+        script: Script,
+        builtins: &[BuiltinAdderFn<SS, CSS, Data>],
+    ) -> Self {
+        let mut vm = Self::new(data, script);
+        builtins
+            .iter()
+            .for_each(|add: &fn(&mut VM<SS, CSS, Data>)| add(&mut vm));
+        vm
     }
 
     // Note: max_runtime is checked every 64 instructions,
@@ -326,11 +342,15 @@ where
 
                 CreateArray => {
                     let argc = self.read_u8();
-                    let mut array = Vec::with_capacity(argc as usize);
+                    let mut array = Vecc::with_capacity(argc as usize);
 
                     for _ in 0..argc {
-                        array.push(self.pop()?.clone());
+                        array
+                            .push(self.pop()?.clone())
+                            .map_err(|e| self.error_1(e.into()))?;
                     }
+
+                    println!("array, {}", array.get_size());
 
                     self.push(Value::Array(Rc::new(array)))?;
                 }
