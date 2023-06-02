@@ -31,7 +31,7 @@ impl GetSize for Value {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Value {
+pub enum Value<const ARRAY_MAX_SIZE: usize = MAX_VALUE_SIZE> {
     None,
     Bool(bool),
     Int(i32),
@@ -42,7 +42,7 @@ pub enum Value {
     String(Rc<String>),
     Special(Box<(&'static str, usize)>),
 
-    Array(Rc<Vecc<Value, MAX_VALUE_SIZE>>),
+    Array(Rc<Vecc<Value, ARRAY_MAX_SIZE>>),
 
     // specialized value for looping
     LoopCtx(usize),
@@ -51,6 +51,10 @@ pub enum Value {
     // Spread(Rc<Vec<Value>>),
     Function(Rc<Function>),
     Closure(Rc<Closure>),
+}
+
+impl<const ARRAY_MAX_SIZE: usize> Value<ARRAY_MAX_SIZE> {
+    pub const ARRAY_MAX_SIZE: usize = ARRAY_MAX_SIZE;
 }
 
 impl std::fmt::Display for Value {

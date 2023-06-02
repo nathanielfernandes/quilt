@@ -15,8 +15,13 @@ use crate::{
     Script,
 };
 
-pub struct VM<const STACK_SIZE: usize = 1024, const CALL_STACK_SIZE: usize = 64, Data = ()>
-where
+pub struct VM<
+    const STACK_SIZE: usize = 1024,
+    const CALL_STACK_SIZE: usize = 64,
+    // 256kb
+    const STRING_MAX_SIZE: usize = { 1024 * 256 },
+    Data = (),
+> where
     Data: VmData,
 {
     pub data: Data, // any data that the VM builtins needs to access
@@ -40,7 +45,7 @@ where
     max_runtime: std::time::Duration,
 }
 
-impl<const SS: usize, const CSS: usize, Data> VM<SS, CSS, Data>
+impl<const SS: usize, const CSS: usize, const SMS: usize, Data> VM<SS, CSS, SMS, Data>
 where
     Data: VmData,
 {
@@ -84,12 +89,12 @@ where
     pub fn new_with(
         data: Data,
         script: Script,
-        builtins: &[BuiltinAdderFn<SS, CSS, Data>],
+        builtins: &[BuiltinAdderFn<SS, CSS, SMS, Data>],
     ) -> Self {
         let mut vm = Self::new(data, script);
         builtins
             .iter()
-            .for_each(|add: &fn(&mut VM<SS, CSS, Data>)| add(&mut vm));
+            .for_each(|add: &fn(&mut VM<SS, CSS, SMS, Data>)| add(&mut vm));
         vm
     }
 
@@ -113,7 +118,7 @@ where
     }
 
     #[inline]
-    pub fn add_builtins(&mut self, builtins: BuiltinAdderFn<SS, CSS, Data>) {
+    pub fn add_builtins(&mut self, builtins: BuiltinAdderFn<SS, CSS, SMS, Data>) {
         builtins(self);
     }
 
@@ -689,7 +694,7 @@ where
                 // }
                 BinaryAdd => {
                     let (lhs, rhs) = self.pop_double_ref()?;
-                    let value = lhs.add(rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.add::<SMS>(rhs).map_err(|e| self.error_1(e))?;
 
                     self.push(value)?;
                 }
@@ -700,10 +705,11 @@ where
 
                     self.push(value)?;
                 }
+
                 BinaryMultiply => {
                     let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.multiply(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.multiply::<SMS>(&rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
@@ -789,7 +795,7 @@ where
                 BinaryJoin => {
                     let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.join(rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.join::<SMS>(rhs).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 

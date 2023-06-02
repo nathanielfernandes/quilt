@@ -105,7 +105,7 @@ where
     pub fn try_new_from(data: Vec<T>) -> Result<Self, Error> {
         let size = data.iter().map(|x| x.get_size()).sum();
         if size > MAX_SIZE {
-            return Err(OverflowError::ValueTooLarge.into());
+            return Err(OverflowError::ArrayTooLarge.into());
         }
         Ok(Self { data, size })
     }
@@ -136,7 +136,7 @@ where
         let item_size = item.get_size();
 
         if self.size + item_size > MAX_SIZE {
-            return Err(OverflowError::ValueTooLarge.into());
+            return Err(OverflowError::ArrayTooLarge.into());
         }
         self.size += item_size;
         self.data.push(item);
@@ -189,7 +189,7 @@ where
     pub fn insert(&mut self, index: usize, item: T) -> Result<(), Error> {
         let item_size = item.get_size();
         if self.size + item_size > MAX_SIZE {
-            return Err(OverflowError::ValueTooLarge.into());
+            return Err(OverflowError::ArrayTooLarge.into());
         }
         self.size += item_size;
         self.data.insert(index, item);
@@ -200,7 +200,7 @@ where
         for item in iter {
             self.size += item.get_size();
             if self.size > MAX_SIZE {
-                return Err(OverflowError::ValueTooLarge.into());
+                return Err(OverflowError::ArrayTooLarge.into());
             }
 
             self.data.push(item);

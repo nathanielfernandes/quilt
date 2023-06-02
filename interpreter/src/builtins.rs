@@ -88,7 +88,8 @@ pub enum BuiltinFn<Data> {
 /// a type alias representing a map of builtin functions
 pub type BuiltinFnMap<Data> = FxHashMap<u16, BuiltinFn<Data>>;
 pub type BuiltinList<const N: usize, Data> = [(String, BuiltinFn<Data>); N];
-pub type BuiltinAdderFn<const SS: usize, const CSS: usize, Data> = fn(&mut vm::VM<SS, CSS, Data>);
+pub type BuiltinAdderFn<const SS: usize, const CSS: usize, const SMS: usize, Data> =
+    fn(&mut vm::VM<SS, CSS, SMS, Data>);
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
@@ -300,7 +301,7 @@ macro_rules! generic_builtins {
                 }
            )*
 
-            pub fn $group<const SS: usize, const CSS: usize, Data>(vm: &mut crate::vm::VM<SS, CSS, Data>)
+            pub fn $group<const SS: usize, const CSS: usize, const SMS: usize, Data>(vm: &mut crate::vm::VM<SS, CSS, SMS, Data>)
             where Data : crate::builtins::VmData
             {
                 vm.add_builtins_list(
@@ -342,7 +343,7 @@ macro_rules! specific_builtins {
                }
            )*
 
-           pub fn $group<const SS: usize, const CSS: usize>(vm: &mut VM<SS, CSS, $datatype>)
+           pub fn $group<const SS: usize, const CSS: usize, const SMS: usize>(vm: &mut VM<SS, CSS, SMS, $datatype>)
            {
 
                 vm.add_builtins_list(
@@ -408,7 +409,7 @@ macro_rules! context_builtins {
                 }
            )*
 
-           pub fn $group<const SS: usize, const CSS: usize>(vm: &mut VM<SS, CSS, $datatype>)
+           pub fn $group<const SS: usize, const CSS: usize, const SMS: usize>(vm: &mut VM<SS, CSS, SMS, $datatype>)
            {
                 vm.add_builtins_list(
                     [

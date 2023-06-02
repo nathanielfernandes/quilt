@@ -1,9 +1,6 @@
 use std::{io::Write, rc::Rc};
 
-use common::{
-    error::{Error, TypeError},
-    vecc::GetSize,
-};
+use common::error::{Error, TypeError};
 use rand::Rng;
 
 use crate::{
@@ -14,8 +11,9 @@ use crate::{
 };
 
 #[inline]
-pub fn std<const SS: usize, const CSS: usize, Data>(vm: &mut VM<SS, CSS, Data>)
-where
+pub fn std<const SS: usize, const CSS: usize, const SMS: usize, Data>(
+    vm: &mut VM<SS, CSS, SMS, Data>,
+) where
     Data: VmData,
 {
     vm.add_builtins(core);
@@ -24,8 +22,9 @@ where
 }
 
 #[inline]
-pub fn stdio<const SS: usize, const CSS: usize, Data>(vm: &mut VM<SS, CSS, Data>)
-where
+pub fn stdio<const SS: usize, const CSS: usize, const SMS: usize, Data>(
+    vm: &mut VM<SS, CSS, SMS, Data>,
+) where
     Data: VmData,
 {
     vm.add_builtins(std);
@@ -34,11 +33,6 @@ where
 
 generic_builtins! {
     [export=core]
-
-
-    fn @sizeof(arg: any) {
-        (arg.get_size() as i32).into()
-    }
 
     fn @get(list: list, index: int) {
         let index = if index < 0 {
