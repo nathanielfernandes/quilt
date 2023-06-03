@@ -2,14 +2,11 @@ use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
 
 use arrayvec::ArrayVec;
 use bytecode::bytecode::*;
-use common::{
-    error::*,
-    pool::Pool,
-    vecc::{GetSize, Vecc},
-};
+use common::{error::*, pool::Pool, vecc::Vecc};
 use fxhash::FxHashMap;
 
 use crate::{
+    arith::fix_index,
     builtins::{BuiltinAdderFn, BuiltinFn, BuiltinFnMap, BuiltinList, ContextExit, VmData},
     value::{Closure, Upvalue, Value},
     Script,
@@ -334,6 +331,81 @@ where
                     }
                 }
 
+                IndexGet => {
+                    let value = self.pop()?.clone();
+                    let index = self.pop()?.clone();
+
+                    let idx = match index {
+                        Value::Int(n) => n,
+                        _ => {
+                            return Err(
+                                self.error_1(TypeError::Expected("int", index.ntype()).into())
+                            );
+                        }
+                    };
+
+                    match value {
+                        Value::Array(array) => {
+                            let idx =
+                                fix_index(idx, array.len()).map_err(|e| self.error_1(e.into()))?;
+                            let value = array[idx].clone();
+                            self.push(value)?;
+                        }
+                        Value::String(string) => {
+                            let chars = string.chars().collect::<Vec<_>>();
+                            let idx =
+                                fix_index(idx, chars.len()).map_err(|e| self.error_1(e.into()))?;
+                            let value = chars[idx].to_string();
+                            self.push(Value::String(Rc::new(value)))?;
+                        }
+                        Value::Pair(pair) => {
+                            let (a, b) = pair.as_ref();
+                            let idx = fix_index(idx, 2).map_err(|e| self.error_1(e.into()))?;
+
+                            let value = match idx {
+                                0 => a.clone(),
+                                1 => b.clone(),
+                                _ => unreachable!(),
+                            };
+
+                            self.push(value)?;
+                        }
+                        _ => {
+                            return Err(self
+                                .error_1(TypeError::Expected("indexable", value.ntype()).into()));
+                        }
+                    }
+                }
+
+                // IndexSet => {
+                //     let target = self.pop()?.clone();
+                //     let index = self.pop()?.clone();
+                //     let value = self.peek(0)?.clone();
+
+                //     let idx = match index {
+                //         Value::Int(n) => n,
+                //         _ => {
+                //             return Err(
+                //                 self.error_1(TypeError::Expected("int", index.ntype()).into())
+                //             );
+                //         }
+                //     };
+
+                //     match target {
+                //         Value::Array(array) => {
+                //             let mut array = array.borrow_mut();
+
+                //             let idx =
+                //                 fix_index(idx, array.len()).map_err(|e| self.error_1(e.into()))?;
+                //             array.set(idx, value).map_err(|e| self.error_1(e.into()))?;
+                //         }
+                //         _ => {
+                //             return Err(
+                //                 self.error_1(TypeError::Expected("mutable", target.ntype()).into())
+                //             );
+                //         }
+                //     }
+                // }
                 CloseUpvalue => {
                     self.close_upvalues(self.sp - 1);
                     self.pop()?;
@@ -355,7 +427,7 @@ where
                             .map_err(|e| self.error_1(e.into()))?;
                     }
 
-                    println!("array, {}", array.get_size());
+                    // println!("array, {}", array.get_size());
 
                     self.push(Value::Array(Rc::new(array)))?;
                 }

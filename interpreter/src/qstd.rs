@@ -1,9 +1,18 @@
-use std::{io::Write, rc::Rc};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    io::Write,
+    rc::Rc,
+};
 
-use common::error::{Error, TypeError};
+use common::{
+    error::{Error, TypeError},
+    vecc::Vecc,
+};
 use rand::Rng;
 
 use crate::{
+    arith::fix_index,
     builtins::{error, VmData},
     generic_builtins,
     value::Value,
@@ -35,21 +44,24 @@ generic_builtins! {
     [export=core]
 
     fn @get(list: list, index: int) {
-        let index = if index < 0 {
-            if -index > list.len() as i32 {
-                Err(Error::IndexError(index as usize))?
-            } else {
-                list.len() as i32 + index
-            }
-        } else {
-            index
-        };
+        let idx = fix_index(index, list.len())?;
 
-
-        if let Some(v) = list.get(index as usize) {
+        if let Some(v) = list.get(idx) {
             v.clone()
         } else {
-            Err(Error::IndexError(index as usize))?
+            Err(Error::IndexError(index))?
+        }
+    }
+
+    fn @set(list: list, index: int, value: any) {
+        let idx = fix_index(index, list.len())?;
+
+        let mut list = list;
+        if let Some(v) = list.get_mut(idx) {
+            *v = value;
+            Value::Array(Rc::new(Vecc::try_new_from(list)?))
+        } else {
+            Err(Error::IndexError(index))?
         }
     }
 
@@ -59,7 +71,7 @@ generic_builtins! {
         // only allow negative indices if they are in bounds
         let start = if start < 0 {
             if -start > len {
-                Err(Error::IndexError(start as usize))?
+                Err(Error::IndexError(start))?
             } else {
                 len + start
             }
@@ -69,7 +81,7 @@ generic_builtins! {
 
         let end = if end < 0 {
             if -end > len {
-                Err(Error::IndexError(start as usize))?
+                Err(Error::IndexError(start))?
             } else {
                 len + end
             }
@@ -182,8 +194,29 @@ fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
         (a * 255.0).round() as u8,
     ]
 }
+
 generic_builtins! {
     [export=math]
+
+    fn @hash(arg: any) {
+        use Value::*;
+        match arg {
+            Special(_) | Array(_) | LoopCtx(_) | Function(_) | Closure(_) => {
+                Err(TypeError::CannotHash(arg.ntype()))?
+            },
+             _ => {
+                let mut hasher = DefaultHasher::new();
+                arg.hash(&mut hasher);
+
+                let hash = hasher.finish();
+
+                // make value positive u32
+                let hash = hash as i64 & 0x7FFFFFFF;
+
+                Value::Int(hash as i32)
+             }
+        }
+    }
 
     fn @min(a: any, b: any) {
         match (&a, &b) {

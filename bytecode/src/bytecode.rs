@@ -60,6 +60,8 @@ bytecode! {
     // gets a value from an iterable and pushes it to the stack
     // if the iterable is exhausted, jumps to the end of the loop
     IterNext, // u16 (jump if end)
+    IndexGet,
+    IndexSet,
     UnaryNegate,
     UnaryNot,
     UnarySpread,

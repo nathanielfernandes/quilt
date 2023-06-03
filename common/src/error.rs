@@ -43,7 +43,7 @@ pub enum Error {
     SyntaxError(SyntaxError),
 
     #[error("index `{0}` out of bounds")]
-    IndexError(usize),
+    IndexError(i32),
 
     #[error("Division by zero")]
     ZeroDivisionError,
@@ -153,6 +153,9 @@ pub enum TypeError {
 
     #[error("failed to iterate :(")]
     FailedToIterate,
+
+    #[error("cannot hash `{0}`")]
+    CannotHash(ValueType),
 }
 
 impl NamedError for TypeError {
@@ -170,6 +173,7 @@ impl NamedError for TypeError {
             Self::UnsupportedUnaryOperation { .. } => "UnsupportedUnaryOperation",
             Self::NotIterable(_) => "NotIterable",
             Self::FailedToIterate => "FailedToIterate",
+            Self::CannotHash(_) => "CannotHash",
         }
     }
 }

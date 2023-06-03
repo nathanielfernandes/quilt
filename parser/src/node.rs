@@ -51,6 +51,8 @@ pub enum Node {
         body: Vec<NodeS>,
     },
 
+    IndexGet(Box<NodeS>, Box<NodeS>),
+    // IndexSet(Box<NodeS>, Box<NodeS>, Box<NodeS>),
     Include(Spanned<String>, Option<Vec<NodeS>>),
     Return(Option<Box<NodeS>>),
 }

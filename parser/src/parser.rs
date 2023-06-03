@@ -97,6 +97,7 @@ peg::parser!(
             KW("let") _ i:spanned(<IDENT()>) _ "=" _ n:@ { Node::Declaration(i, Box::new(n)) }
             KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::MultiDeclaration(i, Box::new(e)) }
             i:spanned(<IDENT()>) _ "=" _ e:@  { Node::Assignment(i, Box::new(e)) }
+            // e:@ _ "[" _ i:node() _ "]" _ "=" _ v:node() { Node::IndexSet(Box::new(e), Box::new(i), Box::new(v)) }
             --
             KW("fn") _ name:spanned(<IDENT()>)? _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block(true) {
                 if let Some(name) = name {
@@ -174,6 +175,7 @@ peg::parser!(
             "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::BuiltinCall(i, args) }
             // i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(i, args) }
             i:@  _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(Box::new(i), args) }
+            e:@  _ "[" _ i:node() _ "]" { Node::IndexGet(Box::new(e), Box::new(i)) }
             i:IDENT() { Node::Identifier(i) }
             "(" _ e:node() _ ")" { e.0 }
             b:block(false) { Node::Block(b) }

@@ -438,3 +438,23 @@ impl Value {
         }
     }
 }
+
+// boundary checks
+// wraps negatives around
+pub fn fix_index(idx: i32, len: usize) -> Result<usize, Error> {
+    let index = if idx < 0 {
+        if -idx > len as i32 {
+            Err(Error::IndexError(idx))?
+        } else {
+            len + idx as usize
+        }
+    } else {
+        idx as usize
+    };
+
+    if index >= len {
+        Err(Error::IndexError(idx))?
+    }
+
+    Ok(index)
+}

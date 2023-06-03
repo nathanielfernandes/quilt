@@ -471,6 +471,18 @@ impl Compiler {
                 // self.if_pop(pop, *span);
             }
 
+            Node::IndexGet(expr, idx) => {
+                self.compile_expr(idx)?;
+                self.compile_expr(expr)?;
+                self.write_op(IndexGet, *span);
+            }
+
+            // Node::IndexSet(target, idx, value) => {
+            //     self.compile_expr(value)?;
+            //     self.compile_expr(idx)?;
+            //     self.compile_expr(target)?;
+            //     self.write_op(IndexSet, *span);
+            // }
             Node::BuiltinCall((name, c_span), args) => {
                 let arity: u8 = args
                     .len()

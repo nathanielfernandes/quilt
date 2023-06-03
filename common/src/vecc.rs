@@ -166,6 +166,17 @@ where
         self.data.get(index)
     }
 
+    pub fn set(&mut self, index: usize, item: T) -> Result<(), Error> {
+        let item_size = item.get_size();
+        if self.size + item_size > MAX_SIZE {
+            return Err(OverflowError::ArrayTooLarge.into());
+        }
+        self.size += item_size;
+
+        self.data[index] = item;
+        Ok(())
+    }
+
     pub fn clear(&mut self) {
         self.data.clear();
         self.size = 0;
