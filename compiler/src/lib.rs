@@ -720,6 +720,8 @@ impl Compiler {
                 self.enter_level(level);
                 self.enter_scope();
 
+                self.define_local(&name, true);
+
                 for (name, _) in args {
                     self.define_local(&name, true);
                 }
