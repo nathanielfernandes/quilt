@@ -1079,7 +1079,7 @@ where
     }
 }
 
-pub struct CallFrame {
+struct CallFrame {
     pub closure: Closure,
     pub ip: usize,
     pub st: usize,
