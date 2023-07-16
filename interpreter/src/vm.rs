@@ -358,6 +358,11 @@ where
                             let value = chars[idx].to_string();
                             self.push(Value::String(Rc::new(value)))?;
                         }
+                        Value::Color(color) => {
+                            let idx = fix_index(idx, 4).map_err(|e| self.error_1(e.into()))?;
+                            let value = color[idx].clone();
+                            self.push(value.into())?;
+                        }
                         Value::Pair(pair) => {
                             let (a, b) = pair.as_ref();
                             let idx = fix_index(idx, 2).map_err(|e| self.error_1(e.into()))?;
@@ -739,6 +744,22 @@ where
                             let loop_idx = start + loop_idx as i32;
                             if loop_idx < *end {
                                 Value::Int(loop_idx)
+                            } else {
+                                self.frame.ip += exit_offset;
+                                continue;
+                            }
+                        }
+                        Value::String(string) => {
+                            if let Some(item) = string.chars().nth(loop_idx) {
+                                Value::String(item.to_string().into())
+                            } else {
+                                self.frame.ip += exit_offset;
+                                continue;
+                            }
+                        }
+                        Value::Color(color) => {
+                            if let Some(item) = color.get(loop_idx) {
+                                Value::Int(*item as i32)
                             } else {
                                 self.frame.ip += exit_offset;
                                 continue;

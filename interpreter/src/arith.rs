@@ -428,6 +428,15 @@ impl Value {
 
                 Ok(Value::Array(Rc::new(new_list)))
             }
+            (Value::Color(lhs), Value::Color(rhs)) => {
+                // lerp colors
+                let mut new_color = [0; 4];
+                for i in 0..4 {
+                    new_color[i] = (lhs[i] + rhs[i]) / 2;
+                }
+
+                Ok(Value::Color(new_color))
+            }
 
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: "..",

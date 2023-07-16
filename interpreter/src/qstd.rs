@@ -161,8 +161,32 @@ generic_builtins! {
         Value::Color(hsla_to_rgba(h, s, l, 1.0))
     }
 
+    fn @hsva(h: num, s: float, v: float, a: float) {
+        Value::Color(hsva_to_rgba(h, s, v, a))
+    }
+
+    fn @hsv(h: num, s: float, v: float) {
+        Value::Color(hsva_to_rgba(h, s, v, 1.0))
+    }
+
     fn @gettype(arg: any) {
         arg.ntype().into()
+    }
+
+    fn @r(c: color) {
+        Value::Int(c[0] as i32)
+    }
+
+    fn @g(c: color) {
+        Value::Int(c[1] as i32)
+    }
+
+    fn @b(c: color) {
+        Value::Int(c[2] as i32)
+    }
+
+    fn @a(c: color) {
+        Value::Int(c[3] as i32)
     }
 }
 
@@ -195,8 +219,61 @@ fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
     ]
 }
 
+#[inline]
+fn hsva_to_rgba(h: f32, s: f32, v: f32, a: f32) -> [u8; 4] {
+    let c = v * s;
+    let h_ = h / 60.0;
+    let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
+    let m = v - c;
+
+    let (r, g, b) = if h_ < 1.0 {
+        (c, x, 0.0)
+    } else if h_ < 2.0 {
+        (x, c, 0.0)
+    } else if h_ < 3.0 {
+        (0.0, c, x)
+    } else if h_ < 4.0 {
+        (0.0, x, c)
+    } else if h_ < 5.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    [
+        ((r + m).max(0.0).min(1.0) * 255.0).round() as u8,
+        ((g + m).max(0.0).min(1.0) * 255.0).round() as u8,
+        ((b + m).max(0.0).min(1.0) * 255.0).round() as u8,
+        (a * 255.0).round() as u8,
+    ]
+}
+
 generic_builtins! {
     [export=math]
+
+    fn @log(arg: any) {
+        match arg {
+            Value::Int(i) => Value::Float((i as f32).log10()),
+            Value::Float(f) => Value::Float(f.log10()),
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "float"))?,
+        }
+    }
+
+    fn @log2(arg: any) {
+        match arg {
+            Value::Int(i) => Value::Float((i as f32).log2()),
+            Value::Float(f) => Value::Float(f.log2()),
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "float"))?,
+        }
+    }
+
+    fn @log10(arg: any) {
+        match arg {
+            Value::Int(i) => Value::Float((i as f32).log10()),
+            Value::Float(f) => Value::Float(f.log10()),
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "float"))?,
+        }
+    }
 
     fn @hash(arg: any) {
         use Value::*;
@@ -347,10 +424,56 @@ generic_builtins! {
 
         Value::Float(rand::thread_rng().gen_range(start..end))
     }
+
+    fn @luma(c: color) {
+        Value::Float(c[0] as f32 * 0.2126 + c[1] as f32  * 0.7152 + c[2] as f32  * 0.0722)
+    }
+
+    fn @hue(c: color) {
+        Value::Float(c[0] as f32 * 0.299 + c[1] as f32  * 0.587 + c[2] as f32  * 0.114)
+    }
+
+    fn @saturation(c: color) {
+        Value::Float((c[0] as f32 - 0.5).abs() + (c[1] as f32 - 0.5).abs() + (c[2] as f32 - 0.5).abs())
+    }
+
+    fn @brightness(c: color) {
+        Value::Float(c[0] as f32 * 0.299 + c[1] as f32  * 0.587 + c[2] as f32  * 0.114)
+    }
+
+    fn @contrast(c: color) {
+        Value::Float((c[0] as f32 - 0.5).abs() + (c[1] as f32 - 0.5).abs() + (c[2] as f32 - 0.5).abs())
+    }
 }
 
 generic_builtins! {
     [export=strings]
+
+    fn @truncate(s: str, len: int, ellipsis: str) {
+        // factor in the length of the ellipsis
+        let len = len as usize;
+
+        // get the byte index of the nth character
+        match s.char_indices().nth(len) {
+            Some((i, _)) => {
+                let i = i.saturating_sub(ellipsis.chars().count());
+                // move the ellipsis so that it touches the last non-whitespace character
+                let mut i = i;
+                let mut cs = s[..i].chars().rev();
+                while let Some(c) = cs.next() {
+                    if !c.is_whitespace() {
+                        break;
+                    }
+                    i = i.saturating_sub(c.len_utf8());
+                }
+
+                let mut s = s[..i].to_string();
+                s.push_str(&ellipsis);
+                s
+            }
+            None => s.to_string(),
+        }.into()
+    }
 
     fn @capitalize(s: str) {
         let mut c = s.chars();
