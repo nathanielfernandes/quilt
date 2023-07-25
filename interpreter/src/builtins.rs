@@ -98,7 +98,8 @@ pub trait Consumable {
     fn int(&mut self) -> Result<i64, Error>;
     fn u8(&mut self) -> Result<u8, Error>;
     fn bool(&mut self) -> Result<bool, Error>;
-    fn float(&mut self) -> Result<f64, Error>;
+    fn float(&mut self) -> Result<f32, Error>;
+    fn double(&mut self) -> Result<f64, Error>;
     fn num(&mut self) -> Result<f64, Error>;
     fn str(&mut self) -> Result<String, Error>;
     fn color(&mut self) -> Result<[u8; 4], Error>;
@@ -189,7 +190,17 @@ impl<'a> Consumable for BuiltinArgsContainer<'a> {
     }
 
     /// consume the next argument as a float, errors if the next argument cannot be a float
-    fn float(&mut self) -> Result<f64, Error> {
+    fn float(&mut self) -> Result<f32, Error> {
+        let value = self.consume("float")?;
+        match value {
+            Value::Int(i) => Ok(*i as f32),
+            Value::Float(f) => Ok(*f as f32),
+            _ => Err(expected(value.ntype(), "float")),
+        }
+    }
+
+    /// consume the next argument as a float, errors if the next argument cannot be a float
+    fn double(&mut self) -> Result<f64, Error> {
         let value = self.consume("float")?;
         match value {
             Value::Int(i) => Ok(*i as f64),

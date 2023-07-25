@@ -149,19 +149,19 @@ generic_builtins! {
         Value::Color([r, g, b, 255])
     }
 
-    fn @hsla(h: num, s: float, l: float, a: float) {
+    fn @hsla(h: float, s: float, l: float, a: float) {
         Value::Color(hsla_to_rgba(h, s, l, a))
     }
 
-    fn @hsl(h: num, s: float, l: float) {
+    fn @hsl(h: float, s: float, l: float) {
         Value::Color(hsla_to_rgba(h, s, l, 1.0))
     }
 
-    fn @hsva(h: num, s: float, v: float, a: float) {
+    fn @hsva(h: float, s: float, v: float, a: float) {
         Value::Color(hsva_to_rgba(h, s, v, a))
     }
 
-    fn @hsv(h: num, s: float, v: float) {
+    fn @hsv(h: float, s: float, v: float) {
         Value::Color(hsva_to_rgba(h, s, v, 1.0))
     }
 
@@ -187,7 +187,7 @@ generic_builtins! {
 }
 
 #[inline]
-fn hsla_to_rgba(h: f64, s: f64, l: f64, a: f64) -> [u8; 4] {
+fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let h_ = h / 60.0;
     let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
@@ -216,7 +216,7 @@ fn hsla_to_rgba(h: f64, s: f64, l: f64, a: f64) -> [u8; 4] {
 }
 
 #[inline]
-fn hsva_to_rgba(h: f64, s: f64, v: f64, a: f64) -> [u8; 4] {
+fn hsva_to_rgba(h: f32, s: f32, v: f32, a: f32) -> [u8; 4] {
     let c = v * s;
     let h_ = h / 60.0;
     let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
@@ -414,7 +414,7 @@ generic_builtins! {
         Value::Int(rand::thread_rng().gen_range(start..end))
     }
 
-    fn @randfloat(start: float, end: float) {
+    fn @randfloat(start: double, end: double) {
         if start >= end {
             Err(error("start must be less than end"))?
         }
