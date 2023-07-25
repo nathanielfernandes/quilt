@@ -96,6 +96,7 @@ pub trait Consumable {
     fn stop(&mut self) -> Result<(), Error>;
 
     fn int(&mut self) -> Result<i64, Error>;
+    fn int32(&mut self) -> Result<i32, Error>;
     fn u8(&mut self) -> Result<u8, Error>;
     fn bool(&mut self) -> Result<bool, Error>;
     fn float(&mut self) -> Result<f32, Error>;
@@ -154,6 +155,16 @@ impl<'a> Consumable for BuiltinArgsContainer<'a> {
         match value {
             Value::Int(i) => Ok(*i),
             Value::Float(f) => Ok(*f as i64),
+            _ => Err(expected(value.ntype(), "int")),
+        }
+    }
+
+    /// consumes the next argument as an integer, errors if the next argument is not an integer
+    fn int32(&mut self) -> Result<i32, Error> {
+        let value = self.consume("int")?;
+        match value {
+            Value::Int(i) => Ok(*i as i32),
+            Value::Float(f) => Ok(*f as i32),
             _ => Err(expected(value.ntype(), "int")),
         }
     }
