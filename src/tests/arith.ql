@@ -1,7 +1,7 @@
 // arithmetic tests
 
-let x = 5;
-x = x + 1;
+let x = 5
+x = x + 1
 x = x * 20 - (5 / 2) ** (2)
 x / 2
 

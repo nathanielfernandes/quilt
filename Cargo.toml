@@ -4,6 +4,9 @@ authors = ["Nathaniel Fernandes <nathaniel.s.fernandes@gmail.com>"]
 version = "0.1.1"
 edition = "2021"
 
+[lib]
+name = "quilt"
+
 [dependencies]
 common       = { path = "./common" }
 parser       = { path = "./parser" }
@@ -17,3 +20,13 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+[workspace]
+members = [
+    "common",
+    "parser",
+    "bytecode",
+    "compiler",
+    "interpreter",
+    "disassembler",
+]

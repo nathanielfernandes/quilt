@@ -169,16 +169,11 @@ impl ByteCode for Vec<u8> {
 #[test]
 fn test_bytecode() {
     let mut chunk = Vec::new();
-    chunk.write_op(OpCode::LoadConst);
+    chunk.write_op(LoadConst);
     chunk.write_u16(400);
-    chunk.write_op(OpCode::Return);
+    chunk.write_op(Return);
 
-    assert_eq!(chunk.read_u8(0), OpCode::LoadConst as u8);
+    assert_eq!(chunk.read_u8(0), LoadConst as u8);
     assert_eq!(chunk.read_u16(1), 400);
-    assert_eq!(chunk.read_u8(3), OpCode::Return as u8);
-
-    // test from
-    let op = OpCode::LoadConst;
-    let op2 = u8::from(op);
-    assert_eq!(op, OpCode::from(op2));
+    assert_eq!(chunk.read_u8(3), Return as u8);
 }
