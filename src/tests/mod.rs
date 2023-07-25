@@ -12,7 +12,13 @@ fn test_code<const SS: usize, const CSS: usize>(
 
     let script = Compiler::compile(&ast)?;
 
-    let mut vm = VM::<SS, CSS>::new((), script);
+    let mut vm = VM::new(
+        (),
+        script,
+        VmOptions::build()
+            .with_stack_size(SS)
+            .with_call_stack_size(CSS),
+    );
     vm.add_builtins(qstd::io);
     vm.add_builtins(qstd::math);
     vm.add_builtins(qstd::core);

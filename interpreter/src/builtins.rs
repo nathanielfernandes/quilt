@@ -73,7 +73,7 @@ impl<'a> BuiltinArgsContainer<'a> {
 
 pub type BuiltinArgs<'a> = &'a [Value];
 /// a type alias representing a builtin function
-pub type BuiltinFnReg<Data> = fn(&mut Data, &BuiltinArgs) -> Result<Value, Error>;
+pub type BuiltinFnReg<Data> = fn(&mut Data, &BuiltinArgs, &vm::VmOptions) -> Result<Value, Error>;
 
 pub type ContextEntry<Data> = BuiltinFnReg<Data>;
 pub type ContextExit<Data> = fn(&mut Data) -> Result<(), Error>;
@@ -88,19 +88,18 @@ pub enum BuiltinFn<Data> {
 /// a type alias representing a map of builtin functions
 pub type BuiltinFnMap<Data> = FxHashMap<u16, BuiltinFn<Data>>;
 pub type BuiltinList<const N: usize, Data> = [(String, BuiltinFn<Data>); N];
-pub type BuiltinAdderFn<const SS: usize, const CSS: usize, const SMS: usize, Data> =
-    fn(&mut vm::VM<SS, CSS, SMS, Data>);
+pub type BuiltinAdderFn<Data> = fn(&mut vm::VM<Data>);
 
 /// a trait that allows a type to be consumed from [`BuiltinArgs`] by a builtin function
 pub trait Consumable {
     fn consume(&mut self, expected: &str) -> Result<&Value, Error>;
     fn stop(&mut self) -> Result<(), Error>;
 
-    fn int(&mut self) -> Result<i32, Error>;
+    fn int(&mut self) -> Result<i64, Error>;
     fn u8(&mut self) -> Result<u8, Error>;
     fn bool(&mut self) -> Result<bool, Error>;
-    fn float(&mut self) -> Result<f32, Error>;
-    fn num(&mut self) -> Result<f32, Error>;
+    fn float(&mut self) -> Result<f64, Error>;
+    fn num(&mut self) -> Result<f64, Error>;
     fn str(&mut self) -> Result<String, Error>;
     fn color(&mut self) -> Result<[u8; 4], Error>;
     fn list(&mut self) -> Result<Vec<Value>, Error>;
@@ -149,20 +148,20 @@ impl<'a> Consumable for BuiltinArgsContainer<'a> {
     }
 
     /// consumes the next argument as an integer, errors if the next argument is not an integer
-    fn int(&mut self) -> Result<i32, Error> {
+    fn int(&mut self) -> Result<i64, Error> {
         let value = self.consume("int")?;
         match value {
             Value::Int(i) => Ok(*i),
-            Value::Float(f) => Ok(*f as i32),
+            Value::Float(f) => Ok(*f as i64),
             _ => Err(expected(value.ntype(), "int")),
         }
     }
 
     /// consumes the next argument as a float or int, errors if the next argument is not a float or int
-    fn num(&mut self) -> Result<f32, Error> {
+    fn num(&mut self) -> Result<f64, Error> {
         let value = self.consume("num")?;
         match value {
-            Value::Int(i) => Ok(*i as f32),
+            Value::Int(i) => Ok(*i as f64),
             Value::Float(f) => Ok(*f),
             _ => Err(expected(value.ntype(), "num")),
         }
@@ -190,10 +189,10 @@ impl<'a> Consumable for BuiltinArgsContainer<'a> {
     }
 
     /// consume the next argument as a float, errors if the next argument cannot be a float
-    fn float(&mut self) -> Result<f32, Error> {
+    fn float(&mut self) -> Result<f64, Error> {
         let value = self.consume("float")?;
         match value {
-            Value::Int(i) => Ok(*i as f32),
+            Value::Int(i) => Ok(*i as f64),
             Value::Float(f) => Ok(*f),
             _ => Err(expected(value.ntype(), "float")),
         }
@@ -282,15 +281,19 @@ pub fn error_with_help<S: Into<String>, H: Into<String>>(msg: S, help: H) -> Err
 macro_rules! generic_builtins {
     {
         [export=$group:ident]
+        [vm_options=$options:ident]
         $(
             fn @$name:ident($($arg:ident: $type:ident),*) $body:block)*
     } => {
 
            $(
-                fn $name<Data>(_: &mut Data, args: &crate::builtins::BuiltinArgs) -> Result<crate::value::Value, common::error::Error> {
+                fn $name<Data>(_: &mut Data, args: &crate::builtins::BuiltinArgs, opts: &crate::vm::VmOptions) -> Result<crate::value::Value, common::error::Error> {
                     use crate::builtins::Consumable;
 
                     let mut args = crate::builtins::BuiltinArgsContainer::new(args);
+
+                    #[allow(unused_variables)]
+                    let $options = opts;
 
                     $(
                         let $arg = args.$type()?;
@@ -301,7 +304,7 @@ macro_rules! generic_builtins {
                 }
            )*
 
-            pub fn $group<const SS: usize, const CSS: usize, const SMS: usize, Data>(vm: &mut crate::vm::VM<SS, CSS, SMS, Data>)
+            pub fn $group<Data>(vm: &mut crate::vm::VM<Data>)
             where Data : crate::builtins::VmData
             {
                 vm.add_builtins_list(
@@ -322,6 +325,8 @@ macro_rules! specific_builtins {
 
         [type=$datatype:ty]
         [export=$group:ident]
+        [vm_options=$options:ident]
+
         $(
 
             $(#[doc = $doc:expr])*
@@ -332,8 +337,12 @@ macro_rules! specific_builtins {
 
            $(
                $(#[doc = $doc])*
-               pub fn $name($data: &mut $datatype, args: &BuiltinArgs) -> Result<Value, Error> {
+               pub fn $name($data: &mut $datatype, args: &BuiltinArgs, opts: &VmOptions) -> Result<Value, Error> {
                     let mut args = BuiltinArgsContainer::new(args);
+
+                    #[allow(unused_variables)]
+                    let $options = opts;
+
                     $(
                        let $arg = args.$type()?;
                     )*
@@ -343,7 +352,7 @@ macro_rules! specific_builtins {
                }
            )*
 
-           pub fn $group<const SS: usize, const CSS: usize, const SMS: usize>(vm: &mut VM<SS, CSS, SMS, $datatype>)
+           pub fn $group(vm: &mut VM<$datatype>)
            {
 
                 vm.add_builtins_list(
@@ -373,6 +382,8 @@ macro_rules! context_builtins {
     {
         [type=$datatype:ty]
         [export=$group:ident]
+        [vm_options=$options:ident]
+
         $(
 
             {
@@ -393,8 +404,12 @@ macro_rules! context_builtins {
            $(
 
                 $(#[doc = $start_doc])*
-                pub fn $start_name($start_data: &mut $datatype, args: &BuiltinArgs) -> Result<Value, Error> {
+                pub fn $start_name($start_data: &mut $datatype, args: &BuiltinArgs, opts: &VmOptions) -> Result<Value, Error> {
                    let mut args = BuiltinArgsContainer::new(args);
+
+                   #[allow(unused_variables)]
+                   let $options = opts;
+
                     $(
                        let $arg = args.$type()?;
                    )*
@@ -409,7 +424,7 @@ macro_rules! context_builtins {
                 }
            )*
 
-           pub fn $group<const SS: usize, const CSS: usize, const SMS: usize>(vm: &mut VM<SS, CSS, SMS, $datatype>)
+           pub fn $group(vm: &mut VM<$datatype>)
            {
                 vm.add_builtins_list(
                     [

@@ -76,44 +76,61 @@ impl<T: GetSize> GetSize for Box<T> {
 // (default is 256kb)
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Vecc<T, const MAX_SIZE: usize = { 1024 * 256 }>
+pub struct Vecc<T>
 where
     T: GetSize,
 {
     data: Vec<T>,
     size: usize,
+    max_size: usize,
 }
 
-impl<T, const MAX_SIZE: usize> Vecc<T, MAX_SIZE>
+impl<T> Vecc<T>
 where
     T: GetSize,
 {
-    pub fn new() -> Self {
+    pub fn new(max_size: usize) -> Self {
         Self {
             data: Vec::new(),
             size: 0,
+            max_size,
         }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn force_new(data: Vec<T>) -> Self {
+        let s = data.iter().map(|x| x.get_size()).sum();
+        Self {
+            size: s,
+            data,
+            max_size: s,
+        }
+    }
+
+    pub fn with_capacity(capacity: usize, max_size: usize) -> Self {
         Self {
             data: Vec::with_capacity(capacity),
             size: 0,
+            max_size,
         }
     }
 
-    pub fn try_new_from(data: Vec<T>) -> Result<Self, Error> {
+    pub fn try_new_from(data: Vec<T>, max_size: usize) -> Result<Self, Error> {
         let size = data.iter().map(|x| x.get_size()).sum();
-        if size > MAX_SIZE {
+        if size > max_size {
             return Err(OverflowError::ArrayTooLarge.into());
         }
-        Ok(Self { data, size })
+        Ok(Self {
+            data,
+            size,
+            max_size,
+        })
     }
 
-    pub fn new_from(data: Vec<T>) -> Self {
+    pub fn new_from(data: Vec<T>, max_size: usize) -> Self {
         Self {
             size: data.iter().map(|x| x.get_size()).sum(),
             data,
+            max_size,
         }
     }
 
@@ -123,6 +140,14 @@ where
 
     pub fn into_data(self) -> Vec<T> {
         self.data
+    }
+
+    pub fn max_size(&self) -> usize {
+        self.max_size
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
     }
 
     pub fn to_vec(&self) -> Vec<T>
@@ -135,7 +160,7 @@ where
     pub fn push(&mut self, item: T) -> Result<(), Error> {
         let item_size = item.get_size();
 
-        if self.size + item_size > MAX_SIZE {
+        if self.size + item_size > self.max_size {
             return Err(OverflowError::ArrayTooLarge.into());
         }
         self.size += item_size;
@@ -168,7 +193,7 @@ where
 
     pub fn set(&mut self, index: usize, item: T) -> Result<(), Error> {
         let item_size = item.get_size();
-        if self.size + item_size > MAX_SIZE {
+        if self.size + item_size > self.max_size {
             return Err(OverflowError::ArrayTooLarge.into());
         }
         self.size += item_size;
@@ -199,7 +224,7 @@ where
 
     pub fn insert(&mut self, index: usize, item: T) -> Result<(), Error> {
         let item_size = item.get_size();
-        if self.size + item_size > MAX_SIZE {
+        if self.size + item_size > self.max_size {
             return Err(OverflowError::ArrayTooLarge.into());
         }
         self.size += item_size;
@@ -210,7 +235,7 @@ where
     pub fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) -> Result<(), Error> {
         for item in iter {
             self.size += item.get_size();
-            if self.size > MAX_SIZE {
+            if self.size > self.max_size {
                 return Err(OverflowError::ArrayTooLarge.into());
             }
 
@@ -244,7 +269,7 @@ impl<T: GetSize> GetSize for Vecc<T> {
 }
 
 //impl index traits
-impl<T, const MAX_SIZE: usize> std::ops::Index<usize> for Vecc<T, MAX_SIZE>
+impl<T> std::ops::Index<usize> for Vecc<T>
 where
     T: GetSize,
 {

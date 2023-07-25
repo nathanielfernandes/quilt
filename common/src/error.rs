@@ -43,7 +43,7 @@ pub enum Error {
     SyntaxError(SyntaxError),
 
     #[error("index `{0}` out of bounds")]
-    IndexError(i32),
+    IndexError(i64),
 
     #[error("Division by zero")]
     ZeroDivisionError,
