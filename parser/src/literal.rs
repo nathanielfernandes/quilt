@@ -14,8 +14,8 @@
 pub enum Literal {
     None,
     Bool(bool),
-    Int(i32),
-    Float(f32),
+    Int(i64),
+    Float(f64),
     Range(i32, i32),
     Color([u8; 4]),
 

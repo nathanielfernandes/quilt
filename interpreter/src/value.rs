@@ -31,18 +31,18 @@ impl GetSize for Value {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Value<const ARRAY_MAX_SIZE: usize = MAX_VALUE_SIZE> {
+pub enum Value {
     None,
     Bool(bool),
-    Int(i32),
-    Float(f32),
+    Int(i64),
+    Float(f64),
     Range(i32, i32),
     Color([u8; 4]),
 
     String(Rc<String>),
     Special(Box<(&'static str, usize)>),
 
-    Array(Rc<Vecc<Value, ARRAY_MAX_SIZE>>),
+    Array(Rc<Vecc<Value>>),
 
     // specialized value for looping
     LoopCtx(usize),
@@ -51,10 +51,6 @@ pub enum Value<const ARRAY_MAX_SIZE: usize = MAX_VALUE_SIZE> {
     // Spread(Rc<Vec<Value>>),
     Function(Rc<Function>),
     Closure(Rc<Closure>),
-}
-
-impl<const ARRAY_MAX_SIZE: usize> Value<ARRAY_MAX_SIZE> {
-    pub const ARRAY_MAX_SIZE: usize = ARRAY_MAX_SIZE;
 }
 
 impl std::fmt::Display for Value {
@@ -264,7 +260,7 @@ macro_rules! impl_from {
         $(
             impl From<$t> for Value {
                 fn from(v: $t) -> Self {
-                    Value::Float(v as f32)
+                    Value::Float(v as f64)
                 }
             }
         )*
@@ -273,7 +269,7 @@ macro_rules! impl_from {
         $(
             impl From<$t> for Value {
                 fn from(v: $t) -> Self {
-                    Value::Int(v as i32)
+                    Value::Int(v as i64)
                 }
             }
         )*
@@ -340,14 +336,19 @@ impl<L: Into<Value>, R: Into<Value>> From<(L, R)> for Value {
     }
 }
 
-pub fn make_value_array(values: Vec<Value>) -> Result<Value, Error> {
-    Vecc::try_new_from(values).map(|v| Value::Array(Rc::new(v)))
+pub fn make_value_array(values: Vec<Value>, max_size: usize) -> Result<Value, Error> {
+    Vecc::try_new_from(values, max_size).map(|v| Value::Array(Rc::new(v)))
 }
 
-impl<T: Into<Value>> From<Vec<T>> for Value {
+impl<T: Into<Value>> From<Vec<T>> for Value
+where
+    T: GetSize,
+{
     fn from(v: Vec<T>) -> Self {
+        let size = v.iter().map(|x| x.get_size()).sum();
         Value::Array(Rc::new(Vecc::new_from(
             v.into_iter().map(|v| v.into()).collect(),
+            size,
         )))
     }
 }

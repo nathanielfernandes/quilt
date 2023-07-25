@@ -68,10 +68,10 @@ impl Value {
     // }
 
     #[inline]
-    pub fn add<const STRING_MAX_SIZE: usize>(&self, other: &Value) -> Result<Value, Error> {
+    pub fn add(&self, other: &Value, string_max_size: usize) -> Result<Value, Error> {
         match (self, other) {
             (Value::String(lhs), Value::String(rhs)) => {
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -79,8 +79,8 @@ impl Value {
             }
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs + rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 + rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs + *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f64 + rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs + *rhs as f64)),
             (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
                 lhs[0].saturating_add(rhs[0]),
                 lhs[1].saturating_add(rhs[1]),
@@ -101,8 +101,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs - rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs - rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 - rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs - *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f64 - rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs - *rhs as f64)),
             (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
                 lhs[0].saturating_sub(rhs[0]),
                 lhs[1].saturating_sub(rhs[1]),
@@ -119,7 +119,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn multiply<const STRING_MAX_SIZE: usize>(&self, other: &Value) -> Result<Value, Error> {
+    pub fn multiply(&self, other: &Value, string_max_size: usize) -> Result<Value, Error> {
         match (self, other) {
             (Value::String(lhs), Value::Int(rhs)) => {
                 if *rhs < 0 {
@@ -135,7 +135,7 @@ impl Value {
                 let rhs = *rhs as usize;
 
                 // check if string is too long
-                if lhs.len() * rhs > STRING_MAX_SIZE {
+                if lhs.len() * rhs > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -143,8 +143,8 @@ impl Value {
             }
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs * rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs * rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 * rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs * *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f64 * rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs * *rhs as f64)),
             (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
                 lhs[0].saturating_mul(rhs[0]),
                 lhs[1].saturating_mul(rhs[1]),
@@ -171,8 +171,8 @@ impl Value {
             }
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs / rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs / rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 / rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs / *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f64 / rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs / *rhs as f64)),
             (Value::Color(lhs), Value::Color(rhs)) => Ok(Value::Color([
                 lhs[0].saturating_div(rhs[0]),
                 lhs[1].saturating_div(rhs[1]),
@@ -196,8 +196,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs % rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs % rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f32 % rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs % *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float(*lhs as f64 % rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs % *rhs as f64)),
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: "%",
                 lhs: self.ntype(),
@@ -212,8 +212,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs.pow(*rhs as u32))),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Float(lhs.powf(*rhs))),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float((*lhs as f32).powf(*rhs))),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs.powf(*rhs as f32))),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Float((*lhs as f64).powf(*rhs))),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Float(lhs.powf(*rhs as f64))),
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: "**",
                 lhs: self.ntype(),
@@ -264,8 +264,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs > rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(lhs > rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs as f32 > *rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs > *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs as f64 > *rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs > *rhs as f64)),
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: ">",
                 lhs: self.ntype(),
@@ -280,8 +280,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs >= rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(lhs >= rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs as f32 >= *rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs >= *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs as f64 >= *rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs >= *rhs as f64)),
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: ">=",
                 lhs: self.ntype(),
@@ -296,8 +296,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs < rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(lhs < rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f32) < *rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs < *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool((*lhs as f64) < *rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs < *rhs as f64)),
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: "<",
                 lhs: self.ntype(),
@@ -312,8 +312,8 @@ impl Value {
         match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs <= rhs)),
             (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(lhs <= rhs)),
-            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs as f32 <= *rhs)),
-            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs <= *rhs as f32)),
+            (Value::Int(lhs), Value::Float(rhs)) => Ok(Value::Bool(*lhs as f64 <= *rhs)),
+            (Value::Float(lhs), Value::Int(rhs)) => Ok(Value::Bool(*lhs <= *rhs as f64)),
             _ => Err(TypeError::UnsupportedBinaryOperation {
                 op: "<=",
                 lhs: self.ntype(),
@@ -337,10 +337,15 @@ impl Value {
     }
 
     #[inline]
-    pub fn join<const STRING_MAX_SIZE: usize>(&self, other: &Value) -> Result<Value, Error> {
+    pub fn join(
+        &self,
+        other: &Value,
+        string_max_size: usize,
+        array_max_size: usize,
+    ) -> Result<Value, Error> {
         match (self, other) {
             (Value::String(lhs), Value::String(rhs)) => {
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -349,7 +354,7 @@ impl Value {
             (Value::String(lhs), Value::Int(rhs)) => {
                 let rhs = rhs.to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -358,7 +363,7 @@ impl Value {
             (Value::String(lhs), Value::Float(rhs)) => {
                 let rhs = rhs.to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -367,7 +372,7 @@ impl Value {
             (Value::String(lhs), Value::Bool(rhs)) => {
                 let rhs = rhs.to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -376,7 +381,7 @@ impl Value {
             (Value::String(lhs), Value::None) => {
                 let rhs = "none".to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -385,7 +390,7 @@ impl Value {
             (Value::Int(lhs), Value::String(rhs)) => {
                 let lhs = lhs.to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -394,7 +399,7 @@ impl Value {
             (Value::Float(lhs), Value::String(rhs)) => {
                 let lhs = lhs.to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -403,7 +408,7 @@ impl Value {
             (Value::Bool(lhs), Value::String(rhs)) => {
                 let lhs = lhs.to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
@@ -412,14 +417,14 @@ impl Value {
             (Value::None, Value::String(rhs)) => {
                 let lhs = "none".to_string();
 
-                if lhs.get_size() + rhs.get_size() > STRING_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > string_max_size {
                     return Err(OverflowError::StringTooLarge.into());
                 }
 
                 Ok(Value::String(Rc::new(lhs + rhs)))
             }
             (Value::Array(lhs), Value::Array(rhs)) => {
-                if lhs.get_size() + rhs.get_size() > Self::ARRAY_MAX_SIZE {
+                if lhs.get_size() + rhs.get_size() > array_max_size {
                     return Err(OverflowError::ArrayTooLarge.into());
                 }
 
@@ -450,9 +455,9 @@ impl Value {
 
 // boundary checks
 // wraps negatives around
-pub fn fix_index(idx: i32, len: usize) -> Result<usize, Error> {
+pub fn fix_index(idx: i64, len: usize) -> Result<usize, Error> {
     let index = if idx < 0 {
-        if -idx > len as i32 {
+        if -idx > len as i64 {
             Err(Error::IndexError(idx))?
         } else {
             len + idx as usize

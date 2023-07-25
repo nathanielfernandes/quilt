@@ -35,11 +35,15 @@ peg::parser!(
         }}
         / expected!("identifier")
 
-        rule INT() -> i32
+        rule INT() -> i64
         = quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
         / expected!("integer")
 
-        rule FLOAT() -> f32
+        rule INT32() -> i32
+        = quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
+        / expected!("integer")
+
+        rule FLOAT() -> f64
         = quiet!{  i:$("-"?['0'..='9']+ "." !"." ['0'..='9']*)  { i.parse().unwrap_or(0.0) } }
         / expected!("float")
 
@@ -67,7 +71,7 @@ peg::parser!(
         / KW("none") { Literal::None }
         / h:HEX() { Literal::Color(h) }
         / f:FLOAT() { Literal::Float(f) }
-        / s:INT() _ ":" _ e:INT() { Literal::Range(s, e) }
+        / s:INT32() _ ":" _ e:INT32() { Literal::Range(s, e) }
         / i:INT() { Literal::Int(i) }
         / s:STRING() { Literal::String(s) }
         / "(" _ h:literal() _ "," _ t:literal() _ ")" { Literal::Pair(Box::new(h), Box::new(t)) }
@@ -140,7 +144,7 @@ peg::parser!(
             --
             KW("include") _ s:spanned(<STRING()>) { Node::Include(s, None) }
             --
-            s:INT() _ ":" _ e:INT() { Node::Literal(Literal::Range(s, e)) }
+            s:INT32() _ ":" _ e:INT32() { Node::Literal(Literal::Range(s, e)) }
             x:(@) _ ":" _ y:@ { Node::Range(Box::new(x), Box::new(y)) }
             --
             x:(@) _ "&&" _ y:@ { Node::Binary(Op::And, Box::new(x), Box::new(y)) }

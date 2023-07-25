@@ -1,6 +1,5 @@
 use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
 
-use arrayvec::ArrayVec;
 use bytecode::bytecode::*;
 use common::{error::*, pool::Pool, vecc::Vecc};
 use fxhash::FxHashMap;
@@ -12,13 +11,61 @@ use crate::{
     Script,
 };
 
-pub struct VM<
-    const STACK_SIZE: usize = 1024,
-    const CALL_STACK_SIZE: usize = 64,
-    // 256kb
-    const STRING_MAX_SIZE: usize = { 1024 * 256 },
-    Data = (),
-> where
+pub struct VmOptions {
+    // Note: max_runtime is checked every 64 instructions,
+    // so it may exceed the max_runtime by up to 64 instructions
+    pub max_runtime: std::time::Duration,
+    pub stack_size: usize,
+    pub call_stack_size: usize,
+    pub string_max_size: usize,
+    pub array_max_size: usize,
+}
+
+impl VmOptions {
+    pub fn build() -> Self {
+        Self::default()
+    }
+
+    pub fn with_max_runtime(mut self, max_runtime: std::time::Duration) -> Self {
+        self.max_runtime = max_runtime;
+        self
+    }
+
+    pub fn with_stack_size(mut self, stack_size: usize) -> Self {
+        self.stack_size = stack_size;
+        self
+    }
+
+    pub fn with_call_stack_size(mut self, call_stack_size: usize) -> Self {
+        self.call_stack_size = call_stack_size;
+        self
+    }
+
+    pub fn with_string_max_size(mut self, string_max_size: usize) -> Self {
+        self.string_max_size = string_max_size;
+        self
+    }
+
+    pub fn with_array_max_size(mut self, array_max_size: usize) -> Self {
+        self.array_max_size = array_max_size;
+        self
+    }
+}
+
+impl Default for VmOptions {
+    fn default() -> Self {
+        Self {
+            max_runtime: std::time::Duration::MAX,
+            stack_size: 500000, // roughly 8mb
+            call_stack_size: 1000,
+            string_max_size: 1024 * 256, // 256kb
+            array_max_size: 1024 * 256,  // 256kb
+        }
+    }
+}
+
+pub struct VM<Data = ()>
+where
     Data: VmData,
 {
     pub data: Data, // any data that the VM builtins needs to access
@@ -32,21 +79,21 @@ pub struct VM<
 
     open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
 
-    frames: ArrayVec<CallFrame, CALL_STACK_SIZE>,
+    frames: Vec<CallFrame>,
     frame: CallFrame,
 
     stack: Vec<Value>,
     sp: usize,
 
     start_time: std::time::Instant,
-    max_runtime: std::time::Duration,
+    options: VmOptions,
 }
 
-impl<const SS: usize, const CSS: usize, const SMS: usize, Data> VM<SS, CSS, SMS, Data>
+impl<Data> VM<Data>
 where
     Data: VmData,
 {
-    pub fn new(data: Data, script: Script) -> Self {
+    pub fn new(data: Data, script: Script, options: VmOptions) -> Self {
         Self {
             data,
 
@@ -59,7 +106,7 @@ where
 
             open_upvalues: Vec::with_capacity(256),
 
-            frames: ArrayVec::new(),
+            frames: Vec::with_capacity(options.call_stack_size),
             frame: {
                 CallFrame {
                     closure: Closure {
@@ -72,34 +119,28 @@ where
             },
 
             stack: {
-                let mut stack = Vec::with_capacity(SS);
-                stack.resize(SS, Value::None);
+                let mut stack = Vec::with_capacity(options.stack_size);
+                stack.resize(options.stack_size, Value::None);
                 stack
             },
             sp: 0,
 
             start_time: std::time::Instant::now(),
-            max_runtime: std::time::Duration::MAX,
+            options,
         }
     }
 
     pub fn new_with(
         data: Data,
         script: Script,
-        builtins: &[BuiltinAdderFn<SS, CSS, SMS, Data>],
+        options: VmOptions,
+        builtins: &[BuiltinAdderFn<Data>],
     ) -> Self {
-        let mut vm = Self::new(data, script);
+        let mut vm = Self::new(data, script, options);
         builtins
             .iter()
-            .for_each(|add: &fn(&mut VM<SS, CSS, SMS, Data>)| add(&mut vm));
+            .for_each(|add: &fn(&mut VM<Data>)| add(&mut vm));
         vm
-    }
-
-    // Note: max_runtime is checked every 64 instructions,
-    // so it may exceed the max_runtime by up to 64 instructions
-    #[inline]
-    pub fn set_max_runtime(&mut self, max_runtime: std::time::Duration) {
-        self.max_runtime = max_runtime;
     }
 
     #[inline]
@@ -115,7 +156,7 @@ where
     }
 
     #[inline]
-    pub fn add_builtins(&mut self, builtins: BuiltinAdderFn<SS, CSS, SMS, Data>) {
+    pub fn add_builtins(&mut self, builtins: BuiltinAdderFn<Data>) {
         builtins(self);
     }
 
@@ -424,7 +465,7 @@ where
 
                 CreateArray => {
                     let argc = self.read_u8();
-                    let mut array = Vecc::with_capacity(argc as usize);
+                    let mut array = Vecc::with_capacity(argc as usize, self.options.array_max_size);
 
                     for _ in 0..argc {
                         array
@@ -443,7 +484,7 @@ where
 
                     match (a, b) {
                         (Value::Int(a), Value::Int(b)) => {
-                            self.push(Value::Range(a, b))?;
+                            self.push(Value::Range(a as i32, b as i32))?;
                         }
                         (Value::Int(_), b) => {
                             return Err(self.error_1(TypeError::Expected("int", b.ntype()).into()));
@@ -559,7 +600,7 @@ where
                                 self.exit_fn_stack.push(*exit);
                             }
 
-                            let result = (entry)(&mut self.data, &args)
+                            let result = (entry)(&mut self.data, &args, &self.options)
                                 .map_err(|e| self.error_1(e.into()))?;
 
                             self.push(result)?;
@@ -596,7 +637,7 @@ where
                             let args = &self.stack[self.sp - argc..self.sp];
                             self.sp -= argc;
 
-                            let result = (builtin)(&mut self.data, &args)
+                            let result = (builtin)(&mut self.data, &args, &self.options)
                                 .map_err(|e| self.error_1(e.into()))?;
 
                             self.push(result)?;
@@ -619,7 +660,7 @@ where
                     let argc = self.read_u8();
                     let value = self.peek(argc as usize)?;
 
-                    if self.frames.len() >= CSS {
+                    if self.frames.len() >= self.options.call_stack_size {
                         return Err(self.error(OverflowError::StackOverflow.into()));
                     }
 
@@ -642,11 +683,7 @@ where
                                 st: self.sp - argc as usize - 1,
                             };
 
-                            unsafe {
-                                self.frames
-                                    .push_unchecked(std::mem::replace(&mut self.frame, frame))
-                            }
-
+                            self.frames.push(std::mem::replace(&mut self.frame, frame));
                             self.data.on_enter_function();
                         }
                         Value::Function(function) => {
@@ -672,10 +709,7 @@ where
                                 st: self.sp - argc as usize - 1,
                             };
 
-                            unsafe {
-                                self.frames
-                                    .push_unchecked(std::mem::replace(&mut self.frame, frame))
-                            }
+                            self.frames.push(std::mem::replace(&mut self.frame, frame));
 
                             self.data.on_enter_function();
                         }
@@ -743,7 +777,7 @@ where
                         Value::Range(start, end) => {
                             let loop_idx = start + loop_idx as i32;
                             if loop_idx < *end {
-                                Value::Int(loop_idx)
+                                Value::Int(loop_idx as i64)
                             } else {
                                 self.frame.ip += exit_offset;
                                 continue;
@@ -759,7 +793,7 @@ where
                         }
                         Value::Color(color) => {
                             if let Some(item) = color.get(loop_idx) {
-                                Value::Int(*item as i32)
+                                Value::Int(*item as i64)
                             } else {
                                 self.frame.ip += exit_offset;
                                 continue;
@@ -786,8 +820,9 @@ where
                 //     self.push(value)?;
                 // }
                 BinaryAdd => {
+                    let sms = self.options.string_max_size;
                     let (lhs, rhs) = self.pop_double_ref()?;
-                    let value = lhs.add::<SMS>(rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.add(rhs, sms).map_err(|e| self.error_1(e))?;
 
                     self.push(value)?;
                 }
@@ -800,9 +835,9 @@ where
                 }
 
                 BinaryMultiply => {
+                    let sms = self.options.string_max_size;
                     let (lhs, rhs) = self.pop_double_ref()?;
-
-                    let value = lhs.multiply::<SMS>(&rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.multiply(&rhs, sms).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
@@ -886,9 +921,11 @@ where
                 }
 
                 BinaryJoin => {
+                    let sms = self.options.string_max_size;
+                    let ams = self.options.array_max_size;
                     let (lhs, rhs) = self.pop_double_ref()?;
 
-                    let value = lhs.join::<SMS>(rhs).map_err(|e| self.error_1(e))?;
+                    let value = lhs.join(rhs, sms, ams).map_err(|e| self.error_1(e))?;
                     self.push(value)?;
                 }
 
@@ -901,8 +938,8 @@ where
 
     #[inline]
     fn has_runtime_exceeded(&self) -> Result<(), ErrorS> {
-        if self.start_time.elapsed() > self.max_runtime {
-            Err(self.errorf(Error::RuntimeLimitExceeded(self.max_runtime)))
+        if self.start_time.elapsed() > self.options.max_runtime {
+            Err(self.errorf(Error::RuntimeLimitExceeded(self.options.max_runtime)))
         } else {
             Ok(())
         }
@@ -972,7 +1009,7 @@ where
     #[inline]
     fn push(&mut self, value: Value) -> Result<(), ErrorS> {
         // print!("-> {}\n", value.display());
-        if self.sp >= SS {
+        if self.sp >= self.options.stack_size {
             return Err(self.error(OverflowError::StackOverflow.into()));
         }
 
@@ -984,7 +1021,7 @@ where
 
     #[inline]
     fn push_many(&mut self, n: usize) -> Result<(), ErrorS> {
-        if self.sp + n >= SS {
+        if self.sp + n >= self.options.stack_size {
             return Err(self.error_1(OverflowError::StackOverflow.into()));
         }
 

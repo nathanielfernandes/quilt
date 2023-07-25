@@ -5,24 +5,20 @@ use std::{
     rc::Rc,
 };
 
-use common::{
-    error::{Error, TypeError},
-    vecc::Vecc,
-};
+use common::error::{Error, TypeError};
 use rand::Rng;
 
 use crate::{
     arith::fix_index,
     builtins::{error, VmData},
     generic_builtins,
-    value::Value,
+    value::{make_value_array, Value},
     vm::VM,
 };
 
 #[inline]
-pub fn std<const SS: usize, const CSS: usize, const SMS: usize, Data>(
-    vm: &mut VM<SS, CSS, SMS, Data>,
-) where
+pub fn std<Data>(vm: &mut VM<Data>)
+where
     Data: VmData,
 {
     vm.add_builtins(core);
@@ -31,9 +27,8 @@ pub fn std<const SS: usize, const CSS: usize, const SMS: usize, Data>(
 }
 
 #[inline]
-pub fn stdio<const SS: usize, const CSS: usize, const SMS: usize, Data>(
-    vm: &mut VM<SS, CSS, SMS, Data>,
-) where
+pub fn stdio<Data>(vm: &mut VM<Data>)
+where
     Data: VmData,
 {
     vm.add_builtins(std);
@@ -42,6 +37,7 @@ pub fn stdio<const SS: usize, const CSS: usize, const SMS: usize, Data>(
 
 generic_builtins! {
     [export=core]
+    [vm_options=options]
 
     fn @get(list: list, index: int) {
         let idx = fix_index(index, list.len())?;
@@ -59,14 +55,14 @@ generic_builtins! {
         let mut list = list;
         if let Some(v) = list.get_mut(idx) {
             *v = value;
-            Value::Array(Rc::new(Vecc::try_new_from(list)?))
+            make_value_array(list, options.array_max_size)?
         } else {
             Err(Error::IndexError(index))?
         }
     }
 
     fn @slice(list: list, start: int, end: int) {
-        let len = list.len() as i32;
+        let len = list.len() as i64;
 
         // only allow negative indices if they are in bounds
         let start = if start < 0 {
@@ -103,8 +99,8 @@ generic_builtins! {
     fn @int(arg: any) {
         match arg {
             Value::Int(i) => Value::Int(i),
-            Value::Float(f) => Value::Int(f as i32),
-            Value::String(s) => match s.parse::<i32>() {
+            Value::Float(f) => Value::Int(f as i64),
+            Value::String(s) => match s.parse::<i64>() {
                 Ok(i) => Value::Int(i),
                 Err(_) => Err(TypeError::ParseError(s.to_string(), "int"))?,
             },
@@ -114,9 +110,9 @@ generic_builtins! {
 
     fn @float(arg: any) {
         match arg {
-            Value::Int(i) => Value::Float(i as f32),
+            Value::Int(i) => Value::Float(i as f64),
             Value::Float(f) => Value::Float(f),
-            Value::String(s) => match s.parse::<f32>() {
+            Value::String(s) => match s.parse::<f64>() {
                 Ok(f) => Value::Float(f),
                 Err(_) => Err(TypeError::ParseError(s.to_string(), "float"))?,
             },
@@ -139,8 +135,8 @@ generic_builtins! {
 
     fn @len(arg: any) {
         match arg {
-            Value::Array(l) => Value::Int(l.len() as i32),
-            Value::String(s) => Value::Int(s.len() as i32),
+            Value::Array(l) => Value::Int(l.len() as i64),
+            Value::String(s) => Value::Int(s.len() as i64),
             _ => Err(error(format!("type `{}` has no length", arg.ntype())))?,
         }
     }
@@ -174,24 +170,24 @@ generic_builtins! {
     }
 
     fn @r(c: color) {
-        Value::Int(c[0] as i32)
+        Value::Int(c[0] as i64)
     }
 
     fn @g(c: color) {
-        Value::Int(c[1] as i32)
+        Value::Int(c[1] as i64)
     }
 
     fn @b(c: color) {
-        Value::Int(c[2] as i32)
+        Value::Int(c[2] as i64)
     }
 
     fn @a(c: color) {
-        Value::Int(c[3] as i32)
+        Value::Int(c[3] as i64)
     }
 }
 
 #[inline]
-fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
+fn hsla_to_rgba(h: f64, s: f64, l: f64, a: f64) -> [u8; 4] {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let h_ = h / 60.0;
     let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
@@ -220,7 +216,7 @@ fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
 }
 
 #[inline]
-fn hsva_to_rgba(h: f32, s: f32, v: f32, a: f32) -> [u8; 4] {
+fn hsva_to_rgba(h: f64, s: f64, v: f64, a: f64) -> [u8; 4] {
     let c = v * s;
     let h_ = h / 60.0;
     let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
@@ -250,10 +246,11 @@ fn hsva_to_rgba(h: f32, s: f32, v: f32, a: f32) -> [u8; 4] {
 
 generic_builtins! {
     [export=math]
+    [vm_options=options]
 
     fn @log(arg: any) {
         match arg {
-            Value::Int(i) => Value::Float((i as f32).log10()),
+            Value::Int(i) => Value::Float((i as f64).log10()),
             Value::Float(f) => Value::Float(f.log10()),
             _ => Err(TypeError::CannotConvert(arg.ntype(), "float"))?,
         }
@@ -261,7 +258,7 @@ generic_builtins! {
 
     fn @log2(arg: any) {
         match arg {
-            Value::Int(i) => Value::Float((i as f32).log2()),
+            Value::Int(i) => Value::Float((i as f64).log2()),
             Value::Float(f) => Value::Float(f.log2()),
             _ => Err(TypeError::CannotConvert(arg.ntype(), "float"))?,
         }
@@ -269,7 +266,7 @@ generic_builtins! {
 
     fn @log10(arg: any) {
         match arg {
-            Value::Int(i) => Value::Float((i as f32).log10()),
+            Value::Int(i) => Value::Float((i as f64).log10()),
             Value::Float(f) => Value::Float(f.log10()),
             _ => Err(TypeError::CannotConvert(arg.ntype(), "float"))?,
         }
@@ -290,7 +287,7 @@ generic_builtins! {
                 // make value positive u32
                 let hash = hash as i64 & 0x7FFFFFFF;
 
-                Value::Int(hash as i32)
+                Value::Int(hash as i64)
              }
         }
     }
@@ -299,8 +296,8 @@ generic_builtins! {
         match (&a, &b) {
             (Value::Int(a), Value::Int(b)) => Value::Int(*a.min(b)),
             (Value::Float(a), Value::Float(b)) => Value::Float(a.min(*b)),
-            (Value::Int(a), Value::Float(b)) => Value::Float((*a as f32).min(*b) ),
-            (Value::Float(a), Value::Int(b)) => Value::Float(a.min(*b as f32)),
+            (Value::Int(a), Value::Float(b)) => Value::Float((*a as f64).min(*b) ),
+            (Value::Float(a), Value::Int(b)) => Value::Float(a.min(*b as f64)),
             _ => Err(TypeError::CannotCompare(a.ntype(), b.ntype()))?,
         }
     }
@@ -309,8 +306,8 @@ generic_builtins! {
         match (&a, &b) {
             (Value::Int(a), Value::Int(b)) => Value::Int(*a.max(b)),
             (Value::Float(a), Value::Float(b)) => Value::Float(a.max(*b)),
-            (Value::Int(a), Value::Float(b)) => Value::Float((*a as f32).max(*b) ),
-            (Value::Float(a), Value::Int(b)) => Value::Float(a.max(*b as f32)),
+            (Value::Int(a), Value::Float(b)) => Value::Float((*a as f64).max(*b) ),
+            (Value::Float(a), Value::Int(b)) => Value::Float(a.max(*b as f64)),
             _ => Err(TypeError::CannotCompare(a.ntype(), b.ntype()))?,
         }
     }
@@ -318,7 +315,7 @@ generic_builtins! {
     fn @round(a: any) {
         match a {
             Value::Int(i) => Value::Int(i),
-            Value::Float(f) => Value::Int(f.round() as i32),
+            Value::Float(f) => Value::Int(f.round() as i64),
             _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
@@ -326,7 +323,7 @@ generic_builtins! {
     fn @floor(a: any) {
         match a {
             Value::Int(i) => Value::Int(i),
-            Value::Float(f) => Value::Int(f.floor() as i32),
+            Value::Float(f) => Value::Int(f.floor() as i64),
             _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
@@ -334,7 +331,7 @@ generic_builtins! {
     fn @ceil(a: any) {
         match a {
             Value::Int(i) => Value::Int(i),
-            Value::Float(f) => Value::Int(f.ceil() as i32),
+            Value::Float(f) => Value::Int(f.ceil() as i64),
             _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
@@ -343,9 +340,9 @@ generic_builtins! {
     fn @fix(a: any, digits: int) {
         match (&a, digits) {
             (Value::Int(i), 0) => Value::Int(*i),
-            (Value::Float(f), 0) => Value::Int(*f as i32),
-            (Value::Int(i), d) => Value::Float(((*i as f32) * 10.0f32.powi(d)).round() / 10.0f32.powi(d)),
-            (Value::Float(f), d) => Value::Float((*f * 10.0f32.powi(d)).round() / 10.0f32.powi(d)),
+            (Value::Float(f), 0) => Value::Int(*f as i64),
+            (Value::Int(i), d) => Value::Float(((*i as f64) * 10.0f64.powi(d as i32)).round() / 10.0f64.powi(d as i32)),
+            (Value::Float(f), d) => Value::Float((*f * 10.0f64.powi(d as i32)).round() / 10.0f64.powi(d as i32)),
             _ => Err(TypeError::Expected("num", a.ntype()))?,
         }
     }
@@ -354,12 +351,12 @@ generic_builtins! {
         match (&a, &m, &mm) {
             (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(*a.min(max).min(min)),
             (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min)),
-            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f32).min(*max).min(*min)),
-            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.min(*max as f32).min(*min as f32)),
-            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f32).min(*max).min(*min as f32)),
-            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f32).min(*max as f32).min(*min)),
-            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min as f32)),
-            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*max as f32).min(*min)),
+            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f64).min(*max).min(*min)),
+            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.min(*max as f64).min(*min as f64)),
+            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f64).min(*max).min(*min as f64)),
+            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f64).min(*max as f64).min(*min)),
+            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min as f64)),
+            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*max as f64).min(*min)),
 
             _ => Err(error(format!("type `{}` cannot be clamped with the given range", a.ntype())))?,
         }
@@ -426,28 +423,29 @@ generic_builtins! {
     }
 
     fn @luma(c: color) {
-        Value::Float(c[0] as f32 * 0.2126 + c[1] as f32  * 0.7152 + c[2] as f32  * 0.0722)
+        Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
     }
 
     fn @hue(c: color) {
-        Value::Float(c[0] as f32 * 0.299 + c[1] as f32  * 0.587 + c[2] as f32  * 0.114)
+        Value::Float(c[0] as f64 * 0.299 + c[1] as f64  * 0.587 + c[2] as f64  * 0.114)
     }
 
     fn @saturation(c: color) {
-        Value::Float((c[0] as f32 - 0.5).abs() + (c[1] as f32 - 0.5).abs() + (c[2] as f32 - 0.5).abs())
+        Value::Float((c[0] as f64 - 0.5).abs() + (c[1] as f64 - 0.5).abs() + (c[2] as f64 - 0.5).abs())
     }
 
     fn @brightness(c: color) {
-        Value::Float(c[0] as f32 * 0.299 + c[1] as f32  * 0.587 + c[2] as f32  * 0.114)
+        Value::Float(c[0] as f64 * 0.299 + c[1] as f64  * 0.587 + c[2] as f64  * 0.114)
     }
 
     fn @contrast(c: color) {
-        Value::Float((c[0] as f32 - 0.5).abs() + (c[1] as f32 - 0.5).abs() + (c[2] as f32 - 0.5).abs())
+        Value::Float((c[0] as f64 - 0.5).abs() + (c[1] as f64 - 0.5).abs() + (c[2] as f64 - 0.5).abs())
     }
 }
 
 generic_builtins! {
     [export=strings]
+    [vm_options=options]
 
     fn @truncate(s: str, len: int, ellipsis: str) {
         // factor in the length of the ellipsis
@@ -504,7 +502,7 @@ generic_builtins! {
     }
 
     fn @split(s: str, sep: str) {
-        s.split(&sep).collect::<Vec<&str>>().into()
+        make_value_array(s.split(&sep).map(|s| s.into()).collect::<Vec<Value>>(), options.array_max_size)?
     }
 
     fn @join(s: list, sep: str) {
@@ -546,6 +544,7 @@ generic_builtins! {
 
 generic_builtins! {
     [export=io]
+    [vm_options=_options]
 
     fn @print(to_print: rest) {
         for arg in to_print {
