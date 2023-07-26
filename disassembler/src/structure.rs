@@ -39,6 +39,7 @@ pub enum Hint {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Line {
     pub line_number: usize,
+    pub span: (usize, usize),
     pub is_jump: bool,
     pub offset: usize,
     pub opcode: &'static str,

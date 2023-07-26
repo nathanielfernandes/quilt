@@ -88,6 +88,7 @@ impl<'a> Disassembler<'a> {
                 let opcode = chunk.ops[offset];
                 let mut line = Line {
                     line_number,
+                    span: (span.0, span.1),
                     is_jump,
                     offset,
                     opcode: opcode.name(),
