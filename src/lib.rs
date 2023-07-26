@@ -22,7 +22,10 @@ pub mod prelude {
     pub use common::span::{Span, Spanned};
     pub use common::vecc::{GetSize, Vecc};
 
-    pub use disassembler::Disassembler;
+    #[cfg(feature = "disassembler")]
+    pub use disassembler::{
+        structure::FunctionDisassembly, structure::Hint, structure::Line, Disassembler,
+    };
 
     pub mod builtins {
         pub use interpreter::builtins::*;

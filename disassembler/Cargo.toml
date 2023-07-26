@@ -11,3 +11,4 @@ common = { path = "../common" }
 bytecode = { path = "../bytecode" }
 interpreter = { path = "../interpreter" }
 colored = "2.0.0"
+serde = { version = "1.0.175", features = ["derive"] }

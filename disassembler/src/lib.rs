@@ -1,210 +1,159 @@
+pub mod structure;
+
 use bytecode::bytecode::*;
 use bytecode::chunk::Chunk;
-use colored::Colorize;
+
 use common::sourcecache::SourceCache;
 use interpreter::{
     value::{Function, Value},
     Script,
 };
+use structure::{FunctionDisassembly, Hint, Line};
 
 pub struct Disassembler<'a> {
     pub src: &'a SourceCache,
-    pub entry: &'a Script,
+    pub main: &'a Script,
 
     // keeps track of jumps to show on the dissasembly output
     jump_stack: Vec<usize>,
-    output: String,
+    output: Vec<FunctionDisassembly>,
+
+    // keeps track of the current function being disassembled
+    idx: usize,
 }
 
 impl<'a> Disassembler<'a> {
-    pub fn new(entry: &'a Script, src: &'a SourceCache) -> Self {
+    pub fn new(main: &'a Script, src: &'a SourceCache) -> Self {
         Self {
             src,
-            entry,
-            output: String::new(),
+            main,
+            output: Vec::new(),
             jump_stack: Vec::new(),
+            idx: 0,
         }
     }
 
-    pub fn disassemble(mut self) -> String {
-        self.disassemble_function(&self.entry.function);
-        self.output
-    }
-
-    pub fn disassemble_function(&mut self, function: &Function) {
+    fn extract_fn(&self, function: &Function) -> (String, usize, String) {
         let (name, span) = &function.name;
 
-        let lineno = self.src.get_lineno(span).unwrap_or(0);
+        let line_number = self.src.get_lineno(span).unwrap_or(0);
         let filename = match self.src.get(span.2) {
             Some(file) => file.name.clone(),
             None => String::from("unknown"),
         };
-        self.output.push_str(
-            &format!(
-                "\nDissasembly of <func {}, file \"{}\", line {}>:\n",
-                name, filename, lineno
-            )
-            .cyan()
-            .to_string(),
-        );
 
+        (name.clone(), line_number, filename)
+    }
+
+    pub fn disassemble(mut self) -> Vec<FunctionDisassembly> {
+        self.disassemble_function(&self.main.function);
+        self.output
+    }
+
+    pub fn disassemble_function(&mut self, function: &Function) {
+        let (name, line_number, filename) = self.extract_fn(function);
+
+        let function_dis = FunctionDisassembly {
+            name,
+            line_number,
+            filename,
+            disassembly: Vec::new(),
+        };
+
+        self.output.push(function_dis);
         self.disassemble_chunk(&function.chunk);
 
         for constant in &function.chunk.constants {
             if let Value::Function(func) = constant {
+                self.idx += 1;
                 self.disassemble_function(func);
             }
         }
     }
 
-    pub fn function_header(&mut self, function: &Function, closure: bool) -> String {
-        let (name, span) = &function.name;
-        let lineno = self.src.get_lineno(span).unwrap_or(0);
-        let filename = match self.src.get(span.2) {
-            Some(file) => file.name.clone(),
-            None => String::from("unknown"),
-        };
-
-        let f = if closure { "closure" } else { "func" };
-        let uv = if closure {
-            format!(
-                " ({} upvalue{})",
-                function.upvalue_count,
-                if function.upvalue_count > 1 { "s" } else { "" }
-            )
-        } else {
-            String::new()
-        };
-
-        format!(
-            "<{} {}{}, file \"{}\", line {}>",
-            f, name, uv, filename, lineno
-        )
-        .cyan()
-        .to_string()
-    }
-
-    pub fn disassemble_chunk(&mut self, chunk: &Chunk<Value>) {
+    fn disassemble_chunk(&mut self, chunk: &Chunk<Value>) {
         let mut offset = 0;
-        let mut last_line = 0;
 
         while offset < chunk.ops.len() {
-            let span = chunk.spans[offset];
-            if let Some(line) = self.src.get_lineno(&span) {
-                let mut arrow = "  ";
+            let span = chunk.spans.get(offset).cloned().unwrap_or_default();
 
-                if let Some(pos) = self.jump_stack.iter().position(|&x| x == offset) {
+            if let Some(line_number) = self.src.get_lineno(&span) {
+                let is_jump = if let Some(pos) = self.jump_stack.iter().position(|&x| x == offset) {
                     self.jump_stack.remove(pos);
-                    arrow = ">>";
-                }
-
-                // line number
-                if last_line != line {
-                    if last_line != 0 {
-                        self.output.push_str("\n");
-                    }
-
-                    self.output
-                        .push_str(&format!("{}\t{}  ", line.to_string().red(), arrow.red()));
+                    true
                 } else {
-                    self.output.push_str(&format!(
-                        "{}\t{}  ",
-                        " ".repeat(last_line.to_string().len()),
-                        arrow.red()
-                    ));
+                    false
+                };
+
+                let opcode = chunk.ops[offset];
+                let mut line = Line {
+                    line_number,
+                    is_jump,
+                    offset,
+                    opcode: opcode.name(),
+                    oparg: None,
+                    hint: None,
+                };
+
+                offset += 1;
+
+                self.disassemble_op(opcode, chunk, &mut offset, &mut line);
+
+                if let Some(function_dis) = self.output.get_mut(self.idx) {
+                    function_dis.disassembly.push(line);
                 }
-
-                last_line = line;
-
-                // offset and op
-                self.output
-                    .push_str(&format!("{:5}", offset.to_string().red()));
-
-                self.disassemble_instruction(chunk, &mut offset);
             } else {
                 offset += 1;
             }
         }
     }
 
-    pub fn disassemble_instruction(&mut self, chunk: &Chunk<Value>, offset: &mut usize) {
-        let op = chunk.ops[*offset];
-        *offset += 1;
-
-        self.output
-            .push_str(&format!("{: <15}", op.name()).blue().to_string());
-
+    fn disassemble_op(
+        &mut self,
+        op: u8,
+        chunk: &Chunk<Value>,
+        offset: &mut usize,
+        line: &mut Line,
+    ) {
         #[allow(non_upper_case_globals)]
         match op {
             LoadNone => {
-                self.output
-                    .push_str(format!("\t     ({})\n", "none".cyan()).as_str());
-            }
-
-            BinaryAdd | BinarySubtract | BinaryMultiply | BinaryDivide | BinaryModulo
-            | BinaryPower | BinaryEqual | BinaryNotEqual | BinaryLess | BinaryLessEqual
-            | BinaryGreater | BinaryGreaterEqual | BinaryAnd | BinaryOr | BinaryJoin
-            | UnaryNegate | UnaryNot | UnarySpread => {
-                let op = match op {
-                    BinaryAdd => "+",
-                    BinarySubtract => "-",
-                    BinaryMultiply => "*",
-                    BinaryDivide => "/",
-                    BinaryModulo => "%",
-                    BinaryPower => "**",
-                    BinaryEqual => "==",
-                    BinaryNotEqual => "!=",
-                    BinaryLess => "<",
-                    BinaryLessEqual => "<=",
-                    BinaryGreater => ">",
-                    BinaryGreaterEqual => ">=",
-                    BinaryAnd => "&&",
-                    BinaryOr => "||",
-                    BinaryJoin => "..",
-                    UnaryNegate => "-",
-                    UnaryNot => "!",
-                    UnarySpread => "...",
-                    _ => unreachable!(),
-                };
-
-                self.output.push_str(&format!("\t     ({})\n", op));
+                line.hint = Some(Hint::None);
             }
 
             LoadConst | CreateFunction => {
                 let const_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 
-                let constant = match chunk.get_constant(const_offset) {
-                    Value::Function(func) => self.function_header(func, false),
-                    constant => constant.display(),
-                };
+                let constant = chunk.get_constant(const_offset);
 
-                self.output.push_str(&format!(
-                    "\t{: <4} ({})\n",
-                    const_offset.to_string().green(),
-                    constant,
-                ));
+                line.oparg = Some(const_offset);
+                line.hint = Some(self.create_hint(constant));
             }
-            DefineGlobal | LoadLocal | LoadGlobal | SetLocal | SetGlobal => {
+
+            DefineGlobal | LoadGlobal | SetGlobal => {
+                let global_offset = chunk.ops.read_u16(*offset);
+                *offset += 2;
+
+                let symbol = self
+                    .main
+                    .global_symbols
+                    .get(global_offset)
+                    .cloned()
+                    .unwrap_or("unknown".to_string());
+
+                line.oparg = Some(global_offset);
+                line.hint = Some(Hint::Symbol(symbol));
+            }
+
+            LoadLocal | SetLocal => {
                 let local_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 
-                let symbol = match op {
-                    DefineGlobal | LoadGlobal | SetGlobal => self
-                        .entry
-                        .global_symbols
-                        .get(local_offset)
-                        .cloned()
-                        .unwrap_or("unknown".to_string()),
+                let symbol = chunk.force_symbol(local_offset).to_string();
 
-                    _ => chunk.force_symbol(local_offset).to_string(),
-                };
-
-                self.output.push_str(&format!(
-                    "\t{: <4} ({})\n",
-                    local_offset.to_string().green(),
-                    symbol.cyan(),
-                ));
+                line.oparg = Some(local_offset);
+                line.hint = Some(Hint::Symbol(symbol));
             }
 
             CreateClosure => {
@@ -212,7 +161,7 @@ impl<'a> Disassembler<'a> {
                 *offset += 2;
 
                 if let Value::Function(func) = chunk.get_constant(const_offset) {
-                    let header = self.function_header(func, true);
+                    let (name, line_number, filename) = self.extract_fn(func);
 
                     for _ in 0..func.upvalue_count {
                         chunk.ops.read_u8(*offset);
@@ -222,13 +171,13 @@ impl<'a> Disassembler<'a> {
                         *offset += 2;
                     }
 
-                    self.output.push_str(&format!(
-                        "\t{: <3} ({})\n",
-                        const_offset.to_string().green(),
-                        header,
-                    ));
-                } else {
-                    panic!("Expected function constant");
+                    line.oparg = Some(const_offset);
+                    line.hint = Some(Hint::Closure {
+                        name,
+                        filename,
+                        line_number,
+                        num_upvalues: func.upvalue_count,
+                    });
                 }
             }
 
@@ -236,16 +185,14 @@ impl<'a> Disassembler<'a> {
                 let upvalue_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 
-                self.output
-                    .push_str(&format!("\t{}\n", upvalue_offset.to_string().green(),));
+                line.oparg = Some(upvalue_offset);
             }
 
             CallFunction | Unpack | CreateArray | LoadNoneMany => {
                 let arg_count = chunk.ops.read_u8(*offset);
                 *offset += 1;
 
-                self.output
-                    .push_str(&format!("\t{}\n", arg_count.to_string().green(),));
+                line.oparg = Some(arg_count as u16);
             }
 
             CallBuiltin | EnterContext => {
@@ -255,29 +202,19 @@ impl<'a> Disassembler<'a> {
                 let arg_count = chunk.ops.read_u8(*offset);
                 *offset += 1;
 
-                self.output.push_str(&format!(
-                    "\t{: <4} ({})\n",
-                    arg_count.to_string().green(),
-                    format!(
-                        "<builtin @{}>",
-                        self.entry
-                            .global_symbols
-                            .get(builtin_offset)
-                            .cloned()
-                            .unwrap_or("unknown???".to_string()),
-                    )
-                    .cyan(),
+                line.oparg = Some(arg_count as u16);
+                line.hint = Some(Hint::Builtin(
+                    self.main
+                        .global_symbols
+                        .get(builtin_offset)
+                        .cloned()
+                        .unwrap_or("unknown".to_string()),
                 ));
             }
 
             JumpIfFalse | JumpForward | JumpBackward | IterNext => {
                 let jump_offset = chunk.ops.read_u16(*offset);
-
                 *offset += 2;
-
-                // if let IterNext = op {
-                //     *offset += 2;
-                // }
 
                 let jump_addr = if let JumpBackward = op {
                     *offset - jump_offset as usize
@@ -287,75 +224,109 @@ impl<'a> Disassembler<'a> {
 
                 self.jump_stack.push(jump_addr);
 
-                let jump = if jump_addr < *offset {
-                    format!(">> {}", jump_addr).cyan()
-                } else {
-                    format!(">> {}", jump_addr).red()
-                };
-
-                self.output.push_str(&format!(
-                    "\t{: <4} {}\n",
-                    jump_offset.to_string().green(),
-                    jump
-                ));
+                line.oparg = Some(jump_offset);
+                line.hint = Some(Hint::Jump(jump_addr));
             }
 
-            _ => {
-                self.output.push_str("\n");
+            // operations
+            BinaryAdd => {
+                line.hint = Some(Hint::Op("+"));
             }
+            BinarySubtract => {
+                line.hint = Some(Hint::Op("-"));
+            }
+            BinaryMultiply => {
+                line.hint = Some(Hint::Op("*"));
+            }
+            BinaryDivide => {
+                line.hint = Some(Hint::Op("/"));
+            }
+            BinaryModulo => {
+                line.hint = Some(Hint::Op("%"));
+            }
+            BinaryPower => {
+                line.hint = Some(Hint::Op("**"));
+            }
+            BinaryEqual => {
+                line.hint = Some(Hint::Op("=="));
+            }
+            BinaryNotEqual => {
+                line.hint = Some(Hint::Op("!="));
+            }
+            BinaryLess => {
+                line.hint = Some(Hint::Op("<"));
+            }
+            BinaryLessEqual => {
+                line.hint = Some(Hint::Op("<="));
+            }
+            BinaryGreater => {
+                line.hint = Some(Hint::Op(">"));
+            }
+            BinaryGreaterEqual => {
+                line.hint = Some(Hint::Op(">="));
+            }
+            BinaryAnd => {
+                line.hint = Some(Hint::Op("&&"));
+            }
+            BinaryOr => {
+                line.hint = Some(Hint::Op("||"));
+            }
+            BinaryJoin => {
+                line.hint = Some(Hint::Op(".."));
+            }
+            UnaryNegate => {
+                line.hint = Some(Hint::Op("-"));
+            }
+            UnaryNot => {
+                line.hint = Some(Hint::Op("!"));
+            }
+            UnarySpread => {
+                line.hint = Some(Hint::Op("..."));
+            }
+
+            _ => {}
         }
     }
-}
 
-pub trait View {
-    fn display(&self) -> String;
-}
+    fn create_hint(&self, value: &Value) -> Hint {
+        match value {
+            Value::None => Hint::None,
+            Value::Bool(bool) => Hint::Bool(*bool),
+            Value::Int(int) => Hint::Int(*int),
+            Value::Float(float) => Hint::Float(*float),
+            Value::Range(l, r) => Hint::Range(*l, *r),
+            Value::Color(c) => Hint::Color(*c),
+            Value::String(s) => Hint::String(s.to_string()),
+            Value::Special(s) => Hint::Special {
+                r#type: s.0,
+                id: s.1,
+            },
+            Value::Array(a) => Hint::Array(a.iter().map(|v| self.create_hint(v)).collect()),
+            Value::Pair(p) => Hint::Pair(
+                Box::new(self.create_hint(&p.0)),
+                Box::new(self.create_hint(&p.1)),
+            ),
+            Value::Function(f) => {
+                let (name, line_number, filename) = self.extract_fn(f);
 
-impl View for Value {
-    fn display(&self) -> String {
-        match self {
-            Value::None => "none".cyan().to_string(),
-            Value::Bool(b) => b.to_string().yellow().to_string(),
-            Value::Int(i) => i.to_string().yellow().to_string(),
-            Value::Float(f) => f.to_string().yellow().to_string(),
-            Value::Range(l, r) => {
-                format!("{}:{}", l.to_string().yellow(), r.to_string().yellow())
-            }
-            Value::Color(c) => format!("#{:02x}{:02x}{:02x}{:02x}", c[0], c[1], c[2], c[3]),
-            Value::String(s) => format!("\"{}\"", s).green().to_string(),
-            Value::Array(l) => {
-                if l.len() <= 10 {
-                    format!(
-                        "[{}]",
-                        l.iter().map(|c| c.display()).collect::<Vec<_>>().join(", ")
-                    )
-                } else {
-                    format!(
-                        "[{}, {}, {}, {}, {}, {}, {}, {}, {}, ...]",
-                        l[0].display(),
-                        l[1].display(),
-                        l[2].display(),
-                        l[3].display(),
-                        l[4].display(),
-                        l[5].display(),
-                        l[6].display(),
-                        l[7].display(),
-                        l[8].display(),
-                    )
+                Hint::Function {
+                    name,
+                    filename,
+                    line_number,
                 }
             }
-            Value::Pair(l) => format!("({}, {})", l.0.display(), l.1.display()),
-            // Value::Spread(s) => format!(
-            //     "...[{}]",
-            //     s.iter().map(|c| c.display()).collect::<Vec<_>>().join(", ")
-            // ),
-            Value::Special(spec) => format!("<{} id={}>", spec.0, spec.1),
-            Value::Function(f) => format!("<func {}>", f.name.0).cyan().to_string(),
-            Value::Closure(c) => format!("<closure {}>", c.function.name.0)
-                .cyan()
-                .to_string(),
+            Value::Closure(c) => {
+                let (name, line_number, filename) = self.extract_fn(&c.function);
 
-            Value::LoopCtx(idx) => format!("<loop_ctx {}>", idx).cyan().to_string(),
+                Hint::Closure {
+                    name,
+                    filename,
+                    line_number,
+                    num_upvalues: c.upvalues.len() as u16,
+                }
+            }
+
+            _ => Hint::None,
         }
     }
 }

@@ -7,19 +7,16 @@ edition = "2021"
 [lib]
 name = "quilt"
 
+[features]
+default = ["disassembler"]
+
 [dependencies]
 common       = { path = "./common" }
 parser       = { path = "./parser" }
 bytecode     = { path = "./bytecode" }
 compiler     = { path = "./compiler" }
 interpreter  = { path = "./interpreter" }
-disassembler = { path = "./disassembler" }
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
+disassembler = { path = "./disassembler", optional = true }
 
 [workspace]
 members = [
@@ -30,3 +27,9 @@ members = [
     "interpreter",
     "disassembler",
 ]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
