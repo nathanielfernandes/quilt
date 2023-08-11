@@ -110,6 +110,62 @@ fib(30)
 ![disassembler](assets/fib_dis.png)
 
 
+## Builtin Functions
+Builtins can be created with an easy to use macro. The macro will generate the callable functions and put them all into the same module. The module can then be added to the vm.
+
+```rust
+generic_builtins! {
+    [export=math] // builtin module name
+    [vm_options=options] // (optional) what variable name to bind the vm options
+
+    fn @sqrt(a: num) {
+        Value::Float(a.sqrt())
+    }
+
+    fn @random() {
+        Value::Float(rand::random())
+    }
+
+    fn @randint(start: int, end: int) {
+        if start >= end {
+            Err(error("start must be less than end"))?
+        }
+
+        Value::Int(rand::thread_rng().gen_range(start..end))
+    }
+
+    fn @randfloat(start: double, end: double) {
+        if start >= end {
+            Err(error("start must be less than end"))?
+        }
+
+        Value::Float(rand::thread_rng().gen_range(start..end))
+    }
+
+    fn @randchoice(list: list) {
+        let mut list = list;
+        if list.is_empty() {
+            Err(error("list must not be empty"))?
+        }
+
+        let idx = rand::thread_rng().gen_range(0..list.len());
+        list.swap_remove(idx)
+    }
+
+    fn @luma(c: color) {
+        Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
+    }
+}
+
+// custom mutable state
+let state: i32 = 0;
+let ops = VmOptions::default();
+
+let mut vm: VM<i32> = VM::new(state, script, ops);
+
+vm.add_builtins(math);
+```
+
 ## Installation
 coming soon...
 

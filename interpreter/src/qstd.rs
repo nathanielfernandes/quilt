@@ -149,19 +149,19 @@ generic_builtins! {
         Value::Color([r, g, b, 255])
     }
 
-    fn @hsla(h: float, s: float, l: float, a: float) {
+    fn @hsla(h: double, s: double, l: double, a: double) {
         Value::Color(hsla_to_rgba(h, s, l, a))
     }
 
-    fn @hsl(h: float, s: float, l: float) {
+    fn @hsl(h: double, s: double, l: double) {
         Value::Color(hsla_to_rgba(h, s, l, 1.0))
     }
 
-    fn @hsva(h: float, s: float, v: float, a: float) {
+    fn @hsva(h: double, s: double, v: double, a: double) {
         Value::Color(hsva_to_rgba(h, s, v, a))
     }
 
-    fn @hsv(h: float, s: float, v: float) {
+    fn @hsv(h: double, s: double, v: double) {
         Value::Color(hsva_to_rgba(h, s, v, 1.0))
     }
 
@@ -187,7 +187,7 @@ generic_builtins! {
 }
 
 #[inline]
-fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
+fn hsla_to_rgba(h: f64, s: f64, l: f64, a: f64) -> [u8; 4] {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let h_ = h / 60.0;
     let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
@@ -216,7 +216,7 @@ fn hsla_to_rgba(h: f32, s: f32, l: f32, a: f32) -> [u8; 4] {
 }
 
 #[inline]
-fn hsva_to_rgba(h: f32, s: f32, v: f32, a: f32) -> [u8; 4] {
+fn hsva_to_rgba(h: f64, s: f64, v: f64, a: f64) -> [u8; 4] {
     let c = v * s;
     let h_ = h / 60.0;
     let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
@@ -347,19 +347,16 @@ generic_builtins! {
         }
     }
 
-    fn @clamp(a: any, m: any, mm: any) {
-        match (&a, &m, &mm) {
-            (Value::Int(a), Value::Int(min), Value::Int(max)) => Value::Int(*a.min(max).min(min)),
-            (Value::Float(a), Value::Float(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min)),
-            (Value::Int(a), Value::Float(min), Value::Float(max)) => Value::Float((*a as f64).min(*max).min(*min)),
-            (Value::Float(a), Value::Int(min), Value::Int(max)) => Value::Float(a.min(*max as f64).min(*min as f64)),
-            (Value::Int(a), Value::Int(min), Value::Float(max)) => Value::Float((*a as f64).min(*max).min(*min as f64)),
-            (Value::Int(a), Value::Float(min), Value::Int(max)) => Value::Float((*a as f64).min(*max as f64).min(*min)),
-            (Value::Float(a), Value::Int(min), Value::Float(max)) => Value::Float(a.min(*max).min(*min as f64)),
-            (Value::Float(a), Value::Float(min), Value::Int(max)) => Value::Float(a.min(*max as f64).min(*min)),
-
-            _ => Err(error(format!("type `{}` cannot be clamped with the given range", a.ntype())))?,
+    fn @clamp(a: num, m: num, mm: num) {
+        if m > mm {
+            Err(error("min must be less than max"))?
         }
+
+        if m.is_nan() || mm.is_nan() {
+            Err(error("min and max must be numbers"))?
+        }
+
+        Value::Float(a.clamp(m, mm))
     }
 
     fn @abs(a: any) {
@@ -422,6 +419,16 @@ generic_builtins! {
         Value::Float(rand::thread_rng().gen_range(start..end))
     }
 
+    fn @randchoice(list: list) {
+        let mut list = list;
+        if list.is_empty() {
+            Err(error("list must not be empty"))?
+        }
+
+        let idx = rand::thread_rng().gen_range(0..list.len());
+        list.swap_remove(idx)
+    }
+
     fn @luma(c: color) {
         Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
     }
@@ -456,8 +463,10 @@ generic_builtins! {
             Some((i, _)) => {
                 let i = i.saturating_sub(ellipsis.chars().count());
                 // move the ellipsis so that it touches the last non-whitespace character
-                let mut i = i;
-                let mut cs = s[..i].chars().rev();
+                let chars = s.chars().collect::<Vec<char>>();
+
+                let mut i = i.min(chars.len());
+                let mut cs = chars[i..].iter();
                 while let Some(c) = cs.next() {
                     if !c.is_whitespace() {
                         break;
@@ -465,7 +474,7 @@ generic_builtins! {
                     i = i.saturating_sub(c.len_utf8());
                 }
 
-                let mut s = s[..i].to_string();
+                let mut s = chars[..i].iter().collect::<String>();
                 s.push_str(&ellipsis);
                 s
             }
