@@ -664,58 +664,40 @@ where
                         return Err(self.error(OverflowError::StackOverflow.into()));
                     }
 
-                    match value {
-                        Value::Closure(closure) => {
-                            if argc != closure.function.arity {
-                                return Err(self.error(
-                                    TypeError::MismatchedArity {
-                                        name: closure.function.name.0.clone(),
-                                        expected: closure.function.arity,
-                                        got: argc,
-                                    }
-                                    .into(),
-                                ));
-                            }
-
-                            let frame = CallFrame {
-                                closure: (**closure).clone(),
-                                ip: 0,
-                                st: self.sp - argc as usize - 1,
-                            };
-
-                            self.frames.push(std::mem::replace(&mut self.frame, frame));
-                            self.data.on_enter_function();
-                        }
-                        Value::Function(function) => {
-                            if argc != function.arity {
-                                return Err(self.error(
-                                    TypeError::MismatchedArity {
-                                        name: function.name.0.clone(),
-                                        expected: function.arity,
-                                        got: argc,
-                                    }
-                                    .into(),
-                                ));
-                            }
-
-                            let closure = Closure {
-                                function: function.clone(),
-                                upvalues: Rc::new(Vec::new()),
-                            };
-
-                            let frame = CallFrame {
-                                closure,
-                                ip: 0,
-                                st: self.sp - argc as usize - 1,
-                            };
-
-                            self.frames.push(std::mem::replace(&mut self.frame, frame));
-
-                            self.data.on_enter_function();
-                        }
-
+                    let function = match value {
+                        Value::Closure(closure) => &closure.function,
+                        Value::Function(function) => function,
                         _ => Err(self.error_1(TypeError::NotCallable(value.ntype()).into()))?,
+                    };
+
+                    if argc != function.arity {
+                        return Err(self.error(
+                            TypeError::MismatchedArity {
+                                name: function.name.0.clone(),
+                                expected: function.arity,
+                                got: argc,
+                            }
+                            .into(),
+                        ));
                     }
+
+                    let closure = match value {
+                        Value::Closure(closure) => (**closure).clone(),
+                        Value::Function(function) => Closure {
+                            function: function.clone(),
+                            upvalues: Rc::new(Vec::new()),
+                        },
+                        _ => Err(self.error_1(TypeError::NotCallable(value.ntype()).into()))?,
+                    };
+
+                    let frame = CallFrame {
+                        closure,
+                        ip: 0,
+                        st: self.sp - argc as usize - 1,
+                    };
+
+                    self.frames.push(std::mem::replace(&mut self.frame, frame));
+                    self.data.on_enter_function();
                 }
 
                 JumpForward => {
