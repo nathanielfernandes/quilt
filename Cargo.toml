@@ -8,14 +8,15 @@ edition = "2021"
 name = "quilt"
 
 [features]
-default = ["disassembler"]
+default = ["disassembler", "qstd"]
 
 [dependencies]
-common       = { path = "./common" }
-parser       = { path = "./parser" }
-bytecode     = { path = "./bytecode" }
-compiler     = { path = "./compiler" }
-interpreter  = { path = "./interpreter" }
+common = { path = "./common" }
+parser = { path = "./parser" }
+bytecode = { path = "./bytecode" }
+compiler = { path = "./compiler" }
+interpreter = { path = "./interpreter" }
+qstd = { path = "./qstd", optional = true }
 disassembler = { path = "./disassembler", optional = true }
 
 [workspace]
@@ -26,6 +27,7 @@ members = [
     "compiler",
     "interpreter",
     "disassembler",
+    "qstd",
 ]
 
 [profile.release]

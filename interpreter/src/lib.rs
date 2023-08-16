@@ -3,7 +3,6 @@ use value::Function;
 
 pub mod arith;
 pub mod builtins;
-pub mod qstd;
 pub mod value;
 pub mod vm;
 

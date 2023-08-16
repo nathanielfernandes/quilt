@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use common::error::{BuiltinError, Error, TypeError};
 use fxhash::FxHashMap;
 
@@ -298,6 +300,10 @@ pub fn error_with_help<S: Into<String>, H: Into<String>>(msg: S, help: H) -> Err
     .into()
 }
 
+// I don't know another way to do this
+#[allow(unused_variables, dead_code)]
+const HERE: PhantomData<u8> = PhantomData;
+
 /// a macro to define builtin functions
 #[macro_export]
 macro_rules! generic_builtins {
@@ -308,11 +314,14 @@ macro_rules! generic_builtins {
             fn @$name:ident($($arg:ident: $type:ident),*) $body:block)*
     } => {
 
-           $(
-                fn $name<Data>(_: &mut Data, args: &crate::builtins::BuiltinArgs, opts: &crate::vm::VmOptions) -> Result<crate::value::Value, common::error::Error> {
-                    use crate::builtins::Consumable;
+            #[cfg(any(THIS))]
+            use quilt::prelude::*;
+            #[cfg(any(THIS))]
+            use quilt::prelude::builtins::*;
 
-                    let mut args = crate::builtins::BuiltinArgsContainer::new(args);
+           $(
+                fn $name<Data>(_: &mut Data, args: &BuiltinArgs, opts: &VmOptions) -> Result<Value, Error> {
+                    let mut args = BuiltinArgsContainer::new(args);
 
                     #[allow(unused_variables)]
                     let $options = opts;
@@ -326,13 +335,13 @@ macro_rules! generic_builtins {
                 }
            )*
 
-            pub fn $group<Data>(vm: &mut crate::vm::VM<Data>)
-            where Data : crate::builtins::VmData
+            pub fn $group<Data>(vm: &mut VM<Data>)
+            where Data : VmData
             {
                 vm.add_builtins_list(
                     [
                         $(
-                            (String::from(stringify!($name)), crate::builtins::BuiltinFn::Fn($name)),
+                            (String::from(stringify!($name)), BuiltinFn::Fn($name)),
                         )*
                     ]
                 );

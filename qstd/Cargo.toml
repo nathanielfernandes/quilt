@@ -1,6 +1,5 @@
 [package]
-name = "interpreter"
-authors = ["Nathaniel Fernandes <nathaniel.s.fernandes@gmail.com>"]
+name = "qstd"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +7,5 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-bytecode = { path = "../bytecode" }
-fxhash = "0.2.1"
-arrayvec = "0.7.2"
-paste = "1.0.12"
+interpreter = { path = "../interpreter" }
+rand = "0.8.5"

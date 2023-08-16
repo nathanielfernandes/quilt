@@ -8,10 +8,10 @@ pub mod prelude {
     pub use compiler::{literal_to_value, Compiler};
 
     pub use interpreter::builtins::{error, error_with_help, expected, Consumable, VmData};
-    pub use interpreter::qstd;
     pub use interpreter::value::Value;
     pub use interpreter::vm::{VmOptions, VM};
     pub use interpreter::Script;
+    pub use qstd;
 
     pub use interpreter::context_builtins;
     pub use interpreter::generic_builtins;
