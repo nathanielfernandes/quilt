@@ -12,6 +12,13 @@ struct Args {
     main_file: PathBuf,
 
     #[clap(
+        long,
+        default_value = "false",
+        help = "Prints the disassembly of the script before running it"
+    )]
+    disassemble: bool,
+
+    #[clap(
         short,
         long,
         default_value = "false",
@@ -94,6 +101,13 @@ fn main() {
 
     if let Some(array_max_size) = args.array_max_size {
         opts.array_max_size = array_max_size;
+    }
+
+    if args.disassemble {
+        let dis = Disassembler::new(&script, &sources);
+        for line in dis.disassemble() {
+            println!("{}", line);
+        }
     }
 
     let mut vm = VM::new((), script, opts);
