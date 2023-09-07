@@ -29,6 +29,7 @@ members = [
     "disassembler",
     "qstd",
 ]
+exclude = ["cli"]
 
 [profile.release]
 opt-level = 3

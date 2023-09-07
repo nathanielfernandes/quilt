@@ -1,0 +1,20 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+clap = { version = "4.4.2", features = ["derive"] }
+quilt = { version = "*", path = ".." }
+
+# specify binary target
+[[bin]]
+name = "quilt"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

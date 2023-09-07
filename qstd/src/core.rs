@@ -69,9 +69,9 @@ generic_builtins! {
     }
 
     fn @int(arg: any) {
-        match arg {
-            Value::Int(i) => Value::Int(i),
-            Value::Float(f) => Value::Int(f as i64),
+        match &arg {
+            Value::Int(i) => Value::Int(*i),
+            Value::Float(f) => Value::Int(*f as i64),
             Value::String(s) => match s.parse::<i64>() {
                 Ok(i) => Value::Int(i),
                 Err(_) => Err(TypeError::ParseError(s.to_string(), "int"))?,
@@ -81,9 +81,9 @@ generic_builtins! {
     }
 
     fn @float(arg: any) {
-        match arg {
-            Value::Int(i) => Value::Float(i as f64),
-            Value::Float(f) => Value::Float(f),
+        match &arg {
+            Value::Int(i) => Value::Float(*i as f64),
+            Value::Float(f) => Value::Float(*f),
             Value::String(s) => match s.parse::<f64>() {
                 Ok(f) => Value::Float(f),
                 Err(_) => Err(TypeError::ParseError(s.to_string(), "float"))?,
@@ -93,10 +93,10 @@ generic_builtins! {
     }
 
     fn @bool(arg: any) {
-        match arg {
-            Value::Bool(b) => Value::Bool(b),
-            Value::Int(i) => Value::Bool(i != 0),
-            Value::Float(f) => Value::Bool(f != 0.0),
+        match &arg {
+            Value::Bool(b) => Value::Bool(*b),
+            Value::Int(i) => Value::Bool(*i != 0),
+            Value::Float(f) => Value::Bool(*f != 0.0),
             Value::String(s) => match s.parse::<bool>() {
                 Ok(b) => Value::Bool(b),
                 Err(_) => Err(TypeError::ParseError(s.to_string(), "bool"))?,
@@ -106,7 +106,7 @@ generic_builtins! {
     }
 
     fn @len(arg: any) {
-        match arg {
+        match &arg {
             Value::Array(l) => Value::Int(l.len() as i64),
             Value::String(s) => Value::Int(s.len() as i64),
             _ => Err(error(format!("type `{}` has no length", arg.ntype())))?,

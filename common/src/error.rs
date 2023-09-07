@@ -51,6 +51,10 @@ pub enum Error {
     #[error("Runtime limit exceeded: {0:?}")]
     RuntimeLimitExceeded(Duration),
 
+    //TODO: add memory limit
+    #[error("Memory limit exceeded")]
+    MemoryLimitExceeded,
+
     #[error("Halt")]
     Halt,
 }
@@ -106,6 +110,7 @@ impl NamedError for Error {
             Error::IndexError(_) => "IndexError",
             Error::ZeroDivisionError => "ZeroDivisionError",
             Error::RuntimeLimitExceeded(_) => "RuntimeLimitExceeded",
+            Error::MemoryLimitExceeded => "MemoryLimitExceeded",
             Error::Halt => "Halt",
         }
     }
