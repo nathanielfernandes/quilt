@@ -30,6 +30,14 @@ struct Args {
         short,
         long,
         default_value = "false",
+        help = "Prints various debug information"
+    )]
+    debug: bool,
+
+    #[clap(
+        short,
+        long,
+        default_value = "false",
         help = "Prints the return value of the script (if any)"
     )]
     result: bool,
@@ -51,6 +59,7 @@ struct Args {
 }
 
 fn main() {
+    let mut debug = std::time::Instant::now();
     let args = Args::parse();
 
     let name = args.main_file.display().to_string();
@@ -73,6 +82,11 @@ fn main() {
         }
     };
 
+    if args.debug {
+        println!("PARSED: {:?}", debug.elapsed());
+        debug = std::time::Instant::now();
+    }
+
     let script = match Compiler::compile(&ast) {
         Ok(script) => script,
         Err(e) => {
@@ -80,6 +94,11 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    if args.debug {
+        println!("COMPILED: {:?}", debug.elapsed());
+        debug = std::time::Instant::now();
+    }
 
     let mut opts = VmOptions::default();
 
@@ -105,6 +124,11 @@ fn main() {
 
     if args.disassemble {
         let dis = Disassembler::new(&script, &sources);
+
+        if args.debug {
+            println!("DISASSEMBLED: {:?}", debug.elapsed());
+        }
+
         for line in dis.disassemble() {
             println!("{}", line);
         }
