@@ -79,7 +79,14 @@ bytecode! {
     BinaryLessEqual,
     BinaryAnd,
     BinaryOr,
-    BinaryJoin
+    BinaryJoin,
+
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseNot,
+    BitwiseLeftShift,
+    BitwiseRightShift
 }
 
 pub trait ByteCode {

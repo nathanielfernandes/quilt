@@ -10,10 +10,7 @@ let ans = if (a > b) {
     "false"
 }
 
-if ans != "false" {
-    @err("ans is not false")
-}
-
+@assert_eq(ans, "false")
 
 let ans2 = 0
 for i in 1:10 {
@@ -22,18 +19,13 @@ for i in 1:10 {
     }
 }
 
-
-if ans2 != 20 {
-    @err("ans2 is not 20")
-}
+@assert_eq(ans2, 20)
 
 let bruh = if 1 < 0 {
     "bruh"
 }
 
-if bruh != none {
-    @err("bruh is not none")
-}
+@assert_eq(bruh, none)
 
 let bruh2 =  if 1 > 0 {
 
@@ -41,7 +33,4 @@ let bruh2 =  if 1 > 0 {
     "bruh"
 }
 
-
-if bruh2 != none {
-    @err("bruh2 is not bruh")
-}
+@assert_eq(bruh2, none)

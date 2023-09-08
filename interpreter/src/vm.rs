@@ -911,6 +911,46 @@ where
                     self.push(value)?;
                 }
 
+                BitwiseAnd => {
+                    let (lhs, rhs) = self.pop_double_ref()?;
+
+                    let value = lhs.bitwise_and(rhs).map_err(|e| self.error_1(e))?;
+                    self.push(value)?;
+                }
+
+                BitwiseOr => {
+                    let (lhs, rhs) = self.pop_double_ref()?;
+
+                    let value = lhs.bitwise_or(rhs).map_err(|e| self.error_1(e))?;
+                    self.push(value)?;
+                }
+
+                BitwiseXor => {
+                    let (lhs, rhs) = self.pop_double_ref()?;
+
+                    let value = lhs.bitwise_xor(rhs).map_err(|e| self.error_1(e))?;
+                    self.push(value)?;
+                }
+
+                BitwiseLeftShift => {
+                    let (lhs, rhs) = self.pop_double_ref()?;
+
+                    let value = lhs.bitwise_shift_left(rhs).map_err(|e| self.error_1(e))?;
+                    self.push(value)?;
+                }
+
+                BitwiseRightShift => {
+                    let (lhs, rhs) = self.pop_double_ref()?;
+
+                    let value = lhs.bitwise_shift_right(rhs).map_err(|e| self.error_1(e))?;
+                    self.push(value)?;
+                }
+
+                BitwiseNot => {
+                    let value = self.pop()?.bitwise_not().map_err(|e| self.error_1(e))?;
+                    self.push(value)?;
+                }
+
                 op => {
                     unimplemented!("Opcode: {}", op.name());
                 }

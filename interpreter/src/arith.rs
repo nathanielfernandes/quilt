@@ -451,6 +451,83 @@ impl Value {
             .into()),
         }
     }
+
+    #[inline]
+    pub fn bitwise_and(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs & rhs)),
+            _ => Err(TypeError::UnsupportedBinaryOperation {
+                op: "&",
+                lhs: self.ntype(),
+                rhs: other.ntype(),
+            }
+            .into()),
+        }
+    }
+
+    #[inline]
+    pub fn bitwise_or(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs | rhs)),
+            _ => Err(TypeError::UnsupportedBinaryOperation {
+                op: "|",
+                lhs: self.ntype(),
+                rhs: other.ntype(),
+            }
+            .into()),
+        }
+    }
+
+    #[inline]
+    pub fn bitwise_xor(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs ^ rhs)),
+            _ => Err(TypeError::UnsupportedBinaryOperation {
+                op: "^",
+                lhs: self.ntype(),
+                rhs: other.ntype(),
+            }
+            .into()),
+        }
+    }
+
+    #[inline]
+    pub fn bitwise_not(&self) -> Result<Value, Error> {
+        match self {
+            Value::Int(i) => Ok(Value::Int(!i)),
+            _ => Err(TypeError::UnsupportedUnaryOperation {
+                op: "~",
+                rhs: self.ntype(),
+            }
+            .into()),
+        }
+    }
+
+    #[inline]
+    pub fn bitwise_shift_left(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs << rhs)),
+            _ => Err(TypeError::UnsupportedBinaryOperation {
+                op: "<<",
+                lhs: self.ntype(),
+                rhs: other.ntype(),
+            }
+            .into()),
+        }
+    }
+
+    #[inline]
+    pub fn bitwise_shift_right(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs >> rhs)),
+            _ => Err(TypeError::UnsupportedBinaryOperation {
+                op: ">>",
+                lhs: self.ntype(),
+                rhs: other.ntype(),
+            }
+            .into()),
+        }
+    }
 }
 
 // boundary checks

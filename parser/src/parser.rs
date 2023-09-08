@@ -157,6 +157,13 @@ peg::parser!(
             x:(@) _ ">" _ y:@ { Node::Binary(Op::Gt, Box::new(x), Box::new(y)) }
             x:(@) _ "<" _ y:@ { Node::Binary(Op::Lt, Box::new(x), Box::new(y)) }
             --
+            x:(@) _ "&" _ y:@ { Node::Binary(Op::BitwiseAnd, Box::new(x), Box::new(y)) }
+            x:(@) _ "|" _ y:@ { Node::Binary(Op::BitwiseOr, Box::new(x), Box::new(y)) }
+            x:(@) _ "^" _ y:@ { Node::Binary(Op::BitwiseXor, Box::new(x), Box::new(y)) }
+            x:(@) _ "<<" _ y:@ { Node::Binary(Op::BitwiseLeftShift, Box::new(x), Box::new(y)) }
+            x:(@) _ ">>" _ y:@ { Node::Binary(Op::BitwiseRightShift, Box::new(x), Box::new(y)) }
+            x:(@) _ "~" _ y:@ { Node::Binary(Op::BitwiseNot, Box::new(x), Box::new(y)) }
+            --
             x:(@) _ ".." _ y:@ { Node::Binary(Op::Join, Box::new(x), Box::new(y)) }
             --
             x:(@) _ "+" _ y:@ { Node::Binary(Op::Add, Box::new(x), Box::new(y)) }

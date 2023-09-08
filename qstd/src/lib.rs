@@ -2,11 +2,13 @@ pub mod core;
 pub mod io;
 pub mod math;
 pub mod strings;
+mod testing;
 
 pub use core::*;
 pub use io::*;
 pub use math::*;
 pub use strings::*;
+pub use testing::testing;
 
 use interpreter::{builtins::VmData, vm::VM};
 

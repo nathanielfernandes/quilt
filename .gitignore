@@ -6,4 +6,4 @@ bin
 *.rv
 */target
 # */Cargo.lock
-*.ql
+cli/*.ql

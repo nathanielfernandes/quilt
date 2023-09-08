@@ -25,11 +25,7 @@ incr()
 
 decr()
 
-
-if (get() != 2) {
-    @err("Expected 2, got " .. get())
-}
-
+@assert_eq(get(), 2)
 
 {
     {
@@ -43,16 +39,12 @@ if (get() != 2) {
         incr()
         incr()
 
-        if (get() != 4) {
-            @err("Expected 4, got " .. get())
-        }
+        @assert_eq(get(), 4)
     }
 }
 
 
-if (get() != 2) {
-    @err("Expected 2, got " .. get())
-}
+@assert_eq(get(), 2)
 
 fn SOUP() {
     let a = 0

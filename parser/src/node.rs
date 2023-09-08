@@ -64,6 +64,8 @@ pub enum Op {
     Pow, Eq,  Neq, Lt,  Gt,  
     Lte, Gte, And, Or, Not, 
     Neg, Join, 
+    
+    BitwiseAnd, BitwiseOr, BitwiseXor, BitwiseNot, BitwiseLeftShift, BitwiseRightShift,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

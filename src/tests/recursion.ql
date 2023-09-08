@@ -6,6 +6,4 @@ fn fib(n) {
     }
 }
 
-if fib(20) != 6765 {
-    @err("fib(20) != 6765")
-}
+@assert_eq(fib(20), 6765)

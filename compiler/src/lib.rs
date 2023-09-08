@@ -764,6 +764,12 @@ impl Compiler {
                     Op::Or => BinaryOr,
                     Op::Join => BinaryJoin,
 
+                    Op::BitwiseAnd => BitwiseAnd,
+                    Op::BitwiseOr => BitwiseOr,
+                    Op::BitwiseXor => BitwiseXor,
+                    Op::BitwiseLeftShift => BitwiseLeftShift,
+                    Op::BitwiseRightShift => BitwiseRightShift,
+
                     _ => unreachable!("unary op in binary expr"),
                 };
 
@@ -793,6 +799,7 @@ impl Compiler {
                     let opcode = match operand {
                         Op::Not => UnaryNot,
                         Op::Neg => UnaryNegate,
+                        Op::BitwiseNot => BitwiseNot,
                         // Op::Spread => UnarySpread,
                         _ => unreachable!("binary op in unary expr"),
                     };
