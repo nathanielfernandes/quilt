@@ -15,7 +15,8 @@ peg::parser!(
         rule TERM()       = ("\r"? "\n") / (";")
         rule COMMENT()    = "//" (!TERM() [_])*
         rule TERMINATOR() = COMMENT()? TERM()
-        rule WHITESPACE() = [' ' | '\t' | '\u{09}' | '\u{0B}' | '\u{0C}' | '\u{20}' | '\u{A0}' ] / "\\" TERM()
+        rule SIMPLEWHITESPACE() = [' ' | '\t' | '\u{09}' | '\u{0B}' | '\u{0C}' | '\u{20}' | '\u{A0}' ]
+        rule WHITESPACE() = SIMPLEWHITESPACE() / "\\" TERM()
 
         rule _  = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT())* }
         rule __ = quiet!{ (WHITESPACE() /  COMMENT())+ }
@@ -183,9 +184,9 @@ peg::parser!(
             "[" _ e:COMMASEP(<node()>) _ "]" { Node::Array(e) }
             "(" _ l:node() _ "," _ r:node() _ ")" { Node::Pair(Box::new(l), Box::new(r)) }
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Node::Literal(Literal::Pair(Box::new(l), Box::new(r))) }
-            "@" i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::BuiltinCall(i, args) }
+            "@" i:spanned(<IDENT()>) SIMPLEWHITESPACE() "(" _ args:COMMASEP(<node()>) _ ")" { Node::BuiltinCall(i, args) }
             // i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(i, args) }
-            i:@  _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(Box::new(i), args) }
+            i:@ SIMPLEWHITESPACE() "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(Box::new(i), args) }
             e:@  _ "[" _ i:node() _ "]" { Node::IndexGet(Box::new(e), Box::new(i)) }
             i:IDENT() { Node::Identifier(i) }
             "(" _ e:node() _ ")" { e.0 }
