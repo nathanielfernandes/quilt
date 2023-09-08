@@ -285,6 +285,25 @@ impl<'a> Disassembler<'a> {
                 line.hint = Some(Hint::Op("..."));
             }
 
+            BitwiseAnd => {
+                line.hint = Some(Hint::Op("&"));
+            }
+            BitwiseOr => {
+                line.hint = Some(Hint::Op("|"));
+            }
+            BitwiseXor => {
+                line.hint = Some(Hint::Op("^"));
+            }
+            BitwiseLeftShift => {
+                line.hint = Some(Hint::Op("<<"));
+            }
+            BitwiseRightShift => {
+                line.hint = Some(Hint::Op(">>"));
+            }
+            BitwiseNot => {
+                line.hint = Some(Hint::Op("~"));
+            }
+
             _ => {}
         }
     }
