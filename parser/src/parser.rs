@@ -20,6 +20,7 @@ peg::parser!(
 
         rule _  = quiet!{ (WHITESPACE() / TERMINATOR() / COMMENT())* }
         rule __ = quiet!{ (WHITESPACE() /  COMMENT())+ }
+        rule ws() = quiet!{ SIMPLEWHITESPACE()* }
 
         rule COMMASEP<T> (x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ** ",") ","? _ {v}
         rule COMMASEPP<T>(x: rule<T>) -> Vec<T> = _ v:(( _ y:x() _ {y}) ++ ",") ","? _ {v}
@@ -37,11 +38,17 @@ peg::parser!(
         / expected!("identifier")
 
         rule INT() -> i64
-        = quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
+        = quiet!{ "0b" i:$(['0'..='1']+) { i64::from_str_radix(i, 2).unwrap_or(0) } }
+        / quiet!{ "0x" i:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) { i64::from_str_radix(i, 16).unwrap_or(0) } }
+        / quiet!{ "0o" i:$(['0'..='7']+) { i64::from_str_radix(i, 8).unwrap_or(0) } }
+        / quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
         / expected!("integer")
 
         rule INT32() -> i32
-        = quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
+        = quiet!{ "0b" i:$(['0'..='1']+) { i32::from_str_radix(i, 2).unwrap_or(0) } }
+        / quiet!{ "0x" i:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) { i32::from_str_radix(i, 16).unwrap_or(0) } }
+        / quiet!{ "0o" i:$(['0'..='7']+) { i32::from_str_radix(i, 8).unwrap_or(0) } }
+        / quiet!{ i:$("-"?['0'..='9']+) { i.parse().unwrap_or(0) } }
         / expected!("integer")
 
         rule FLOAT() -> f64
@@ -49,7 +56,7 @@ peg::parser!(
         / expected!("float")
 
         rule HEX() -> [u8; 4]
-        = ("#" / "0x")  s:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) {?
+        = "#" s:$(['0'..='9' | 'a'..='f' | 'A'..='F']+) {?
             if let Some(c) = hex_to_rgba(s) {
                 Ok(c)
             } else {
@@ -178,15 +185,16 @@ peg::parser!(
             --
             "!" _ e:@ { Node::Unary(Op::Not, Box::new(e)) }
             "-" _ e:@ { Node::Unary(Op::Neg, Box::new(e)) }
+            "~" _ e:@ { Node::Unary(Op::BitwiseNot, Box::new(e)) }
             --
             l:literal() { Node::Literal(l) }
             // "..." _ e:@ { Node::Unary(Op::Spread, Box::new(e)) }
             "[" _ e:COMMASEP(<node()>) _ "]" { Node::Array(e) }
             "(" _ l:node() _ "," _ r:node() _ ")" { Node::Pair(Box::new(l), Box::new(r)) }
             "(" _ l:literal() _ "," _ r:literal() _ ")" { Node::Literal(Literal::Pair(Box::new(l), Box::new(r))) }
-            "@" i:spanned(<IDENT()>) SIMPLEWHITESPACE() "(" _ args:COMMASEP(<node()>) _ ")" { Node::BuiltinCall(i, args) }
+            "@" i:spanned(<IDENT()>) ws() "(" _ args:COMMASEP(<node()>) _ ")" { Node::BuiltinCall(i, args) }
             // i:spanned(<IDENT()>) _ "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(i, args) }
-            i:@ SIMPLEWHITESPACE() "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(Box::new(i), args) }
+            i:@ ws() "(" _ args:COMMASEP(<node()>) _ ")" { Node::Call(Box::new(i), args) }
             e:@  _ "[" _ i:node() _ "]" { Node::IndexGet(Box::new(e), Box::new(i)) }
             i:IDENT() { Node::Identifier(i) }
             "(" _ e:node() _ ")" { e.0 }
