@@ -68,6 +68,18 @@ generic_builtins! {
         arg.to_string().into()
     }
 
+    fn @bin(val: int) {
+        format!("{:b}", val).into()
+    }
+
+    fn @oct(val: int) {
+        format!("{:o}", val).into()
+    }
+
+    fn @hex(val: int) {
+        format!("{:x}", val).into()
+    }
+
     fn @int(arg: any) {
         match &arg {
             Value::Int(i) => Value::Int(*i),
