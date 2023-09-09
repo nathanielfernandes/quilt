@@ -80,6 +80,29 @@ generic_builtins! {
         format!("{:x}", val).into()
     }
 
+    fn @char(val: int) {
+        if let Some(c) = std::char::from_u32(val as u32) {
+            c.to_string().into()
+        } else {
+            Err(error(format!("invalid character code `{}`", val)))?
+        }
+    }
+
+    fn @int_from_radix(val: str, radix: int32) {
+        // if radix is not from 2 to 36, return an error
+        if radix < 2 || radix > 36 {
+            Err(error(format!(
+                "radix must be between 2 and 36, got `{}`",
+                radix
+            )))?
+        }
+
+        match i64::from_str_radix(&val, radix as u32) {
+            Ok(i) => Value::Int(i),
+            Err(_) => Err(TypeError::ParseError(val.to_string(), "int"))?,
+        }
+    }
+
     fn @int(arg: any) {
         match &arg {
             Value::Int(i) => Value::Int(*i),
