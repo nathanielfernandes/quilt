@@ -30,4 +30,39 @@ pub mod prelude {
     pub mod builtins {
         pub use interpreter::builtins::*;
     }
+
+    pub struct EZError {
+        pub error: ErrorS,
+        pub sources: SourceCache,
+    }
+
+    impl EZError {
+        pub fn print(self) -> std::io::Result<()> {
+            self.error.print(self.sources)
+        }
+
+        pub fn to_string(self) -> Result<String, std::io::Error> {
+            self.error.to_string(self.sources)
+        }
+    }
+
+    pub fn build_script(
+        name: &str,
+        src: &str,
+        resolver: &mut impl IncludeResolver,
+    ) -> Result<Script, EZError> {
+        let mut sources = SourceCache::new();
+
+        let ast = match sources.parse_with_includes(name, src, resolver) {
+            Ok(ast) => ast,
+            Err(e) => return Err(EZError { error: e, sources }),
+        };
+
+        let script = match Compiler::compile(&ast) {
+            Ok(f) => f,
+            Err(e) => return Err(EZError { error: e, sources }),
+        };
+
+        Ok(script)
+    }
 }
