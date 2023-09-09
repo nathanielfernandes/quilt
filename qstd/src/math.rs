@@ -166,6 +166,10 @@ generic_builtins! {
         Value::Float(rand::random())
     }
 
+    fn @randbool() {
+        Value::Bool(rand::random())
+    }
+
     fn @randint(start: int, end: int) {
         if start >= end {
             Err(error("start must be less than end"))?
