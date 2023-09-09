@@ -82,11 +82,11 @@ fn NewCounter() {
     let count = 0
 
     fn Increment() {
-        count = count + 1
+        count += 1
     }
 
     fn Decrement() {
-        count = count - 1
+        count -= 1
     }
 
     // lambdas
