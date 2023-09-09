@@ -77,7 +77,7 @@ fn main() {
     let ast = match sources.parse_with_includes(&name, &src, &mut resolver) {
         Ok(ast) => ast,
         Err(e) => {
-            e.print(sources).expect("Failed to print error");
+            e.print(&sources).expect("Failed to print error");
             std::process::exit(1);
         }
     };
@@ -90,7 +90,7 @@ fn main() {
     let script = match Compiler::compile(&ast) {
         Ok(script) => script,
         Err(e) => {
-            e.print(sources).expect("Failed to print error");
+            e.print(&sources).expect("Failed to print error");
             std::process::exit(1);
         }
     };
@@ -161,7 +161,10 @@ fn main() {
             std::process::exit(0);
         }
         Err(e) => {
-            e.print(sources).expect("Failed to print error");
+            vm.trace_back()
+                .print(&sources)
+                .expect("Failed to print error");
+            e.print(&sources).expect("Failed to print error");
             std::process::exit(1);
         }
     }

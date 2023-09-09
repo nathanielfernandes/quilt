@@ -1,8 +1,10 @@
 use std::{io::Cursor, time::Duration};
 
-use ariadne::{Color, Label, Report, ReportKind};
+use ariadne::{Color, Label, ReportKind};
 
 use thiserror::Error;
+
+pub use ariadne::Report;
 
 use crate::{
     sourcecache::SourceCache,
@@ -11,11 +13,12 @@ use crate::{
 
 pub type ErrorS = Spanned<Error>;
 pub type ValueType = &'static str;
+pub type TraceBack = Vec<Spanned<String>>;
 
 pub trait ErrorExt {
     fn report(&self) -> Report<Span>;
-    fn print(&self, sources: SourceCache) -> std::io::Result<()>;
-    fn to_string(self, cache: SourceCache) -> Result<String, std::io::Error>;
+    fn print(&self, sources: &SourceCache) -> std::io::Result<()>;
+    fn to_string(self, cache: &SourceCache) -> Result<String, std::io::Error>;
 }
 
 pub trait NamedError {
@@ -78,11 +81,70 @@ impl ErrorExt for ErrorS {
         report.finish()
     }
 
-    fn print(&self, sources: SourceCache) -> std::io::Result<()> {
+    fn print(&self, sources: &SourceCache) -> std::io::Result<()> {
         self.report().print(sources)
     }
 
-    fn to_string(self, cache: SourceCache) -> Result<String, std::io::Error> {
+    fn to_string(self, cache: &SourceCache) -> Result<String, std::io::Error> {
+        let mut buf = vec![];
+        let cursor = Cursor::new(&mut buf);
+        self.report().write(cache, cursor)?;
+
+        if let Ok(s) = String::from_utf8(buf) {
+            Ok(s)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Could not convert to string",
+            ))
+        }
+    }
+}
+
+impl ErrorExt for TraceBack {
+    fn report(&self) -> Report<Span> {
+        let Some((_, span)) = self.first() else {
+            return Report::build(ReportKind::Custom("Traceback", Color::Red), 0usize, 0).finish();
+        };
+        let kind = ReportKind::Custom("Traceback", Color::Red);
+        Report::build(kind, span.2, span.0).finish()
+    }
+
+    fn print(&self, sources: &SourceCache) -> std::io::Result<()> {
+        println!("Traceback (most recent call last):");
+        // iterate over the first 10 frames
+        for (fn_name, span) in self.iter().rev() {
+            if fn_name.starts_with("...") {
+                println!("   {}", fn_name);
+                continue;
+            }
+
+            let Some(src) = sources.get(span.2) else {
+                continue;
+            };
+
+            if src.source.len() == 0 {
+                continue;
+            }
+
+            let Some(lineno) = src.source.get_offset_line(span.0).map(|(_, l, _)| l) else {
+                continue;
+            };
+
+            let Some(line) = src.source.line(lineno) else {
+                continue;
+            };
+
+            let line = line.chars().collect::<String>();
+
+            println!("   File \"{}\", line {}, in {}", src.name, lineno, fn_name);
+            println!("      {}", line.trim_start());
+        }
+
+        Ok(())
+    }
+
+    fn to_string(self, cache: &SourceCache) -> Result<String, std::io::Error> {
         let mut buf = vec![];
         let cursor = Cursor::new(&mut buf);
         self.report().write(cache, cursor)?;

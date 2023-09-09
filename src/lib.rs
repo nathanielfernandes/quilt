@@ -36,13 +36,17 @@ pub mod prelude {
         pub sources: SourceCache,
     }
 
-    impl EZError {
-        pub fn print(self) -> std::io::Result<()> {
-            self.error.print(self.sources)
+    impl ErrorExt for EZError {
+        fn report(&self) -> Report<Span> {
+            self.error.report()
         }
 
-        pub fn to_string(self) -> Result<String, std::io::Error> {
-            self.error.to_string(self.sources)
+        fn print(&self, sources: &SourceCache) -> std::io::Result<()> {
+            self.error.print(sources)
+        }
+
+        fn to_string(self, cache: &SourceCache) -> Result<String, std::io::Error> {
+            self.error.to_string(cache)
         }
     }
 

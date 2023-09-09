@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
 
 use bytecode::bytecode::*;
-use common::{error::*, pool::Pool, vecc::Vecc};
+use common::{error::*, pool::Pool, span::Span, vecc::Vecc};
 use fxhash::FxHashMap;
 
 use crate::{
@@ -173,6 +173,41 @@ where
     #[inline]
     pub fn finish(self) -> Data {
         self.data
+    }
+
+    pub fn trace_back(&self) -> TraceBack {
+        let mut trace = Vec::new();
+
+        // push the current frame
+        let name = self.frame.closure.function.name.0.clone();
+        let span = self
+            .frame
+            .closure
+            .function
+            .chunk
+            .get_span(self.frame.ip - 1);
+        trace.push((name, span));
+
+        for frame in self.frames.iter().skip(1).rev().take(8) {
+            let name = frame.closure.function.name.0.clone();
+            let span = frame.closure.function.chunk.get_span(frame.ip - 1);
+            trace.push((name, span));
+        }
+
+        if self.frames.len() > 10 {
+            let n = self.frames.len() - 10;
+            let s = if n == 1 { "" } else { "s" };
+            trace.push((format!("... {} more frame{}", n, s), Span::default()));
+        }
+
+        // push the main frame
+        let frame = self.frames.first().expect("no main frame");
+        let name = frame.closure.function.name.0.clone();
+        let span = frame.closure.function.chunk.get_span(frame.ip);
+
+        trace.push((name, span));
+
+        trace
     }
 
     pub fn run(&mut self) -> Result<Value, ErrorS> {

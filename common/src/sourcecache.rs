@@ -9,7 +9,7 @@ pub struct SourceCache {
     sources: Vec<Src>,
 }
 
-impl Cache<usize> for SourceCache {
+impl Cache<usize> for &SourceCache {
     fn fetch(&mut self, id: &usize) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
         self.sources
             .get(*id)

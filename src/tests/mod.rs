@@ -14,7 +14,7 @@ fn test_code<const SS: usize, const CSS: usize>(
     ) {
         Ok(ast) => ast,
         Err(e) => {
-            e.print(sources).expect("failed to print error");
+            e.print(&sources).expect("failed to print error");
             return Err(e.0.name());
         }
     };
@@ -22,7 +22,7 @@ fn test_code<const SS: usize, const CSS: usize>(
     let script = match Compiler::compile(&ast) {
         Ok(script) => script,
         Err(e) => {
-            e.print(sources).expect("failed to print error");
+            e.print(&sources).expect("failed to print error");
             return Err(e.0.name());
         }
     };
@@ -38,7 +38,7 @@ fn test_code<const SS: usize, const CSS: usize>(
     vm.add_builtins(crate::prelude::qstd::testing);
 
     if let Err(e) = vm.run() {
-        e.print(sources).expect("failed to print error");
+        e.print(&sources).expect("failed to print error");
         return Err(e.0.name());
     }
 
