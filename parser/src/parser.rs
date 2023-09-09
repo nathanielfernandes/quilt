@@ -100,15 +100,59 @@ peg::parser!(
             }
         }
 
+        rule op() -> Op
+        = "+" { Op::Add }
+        / "-" { Op::Sub }
+        / "*" { Op::Mul }
+        / "/" { Op::Div }
+        / "%" { Op::Mod }
+        / "**" { Op::Pow }
+        / "&&" { Op::And }
+        / "||" { Op::Or }
+        / "&" { Op::BitwiseAnd }
+        / "|" { Op::BitwiseOr }
+        / "^" { Op::BitwiseXor }
+        / "<<" { Op::BitwiseLeftShift }
+        / ">>" { Op::BitwiseRightShift }
+        / ".." { Op::Join }
+
         rule node() -> Spanned<Node>
         = precedence! {
             start:position!() e:(@) end:position!() { (e, Span(start, end, src_id)) }
             --
             KW("return") __? e:node()? { Node::Return(e.map(Box::new)) }
             --
-            KW("let") _ i:spanned(<IDENT()>) _ "=" _ n:@ { Node::Declaration(i, Box::new(n)) }
+            KW("let") _ i:spanned(<IDENT()>) _ op:op()? "=" _ n:@ {
+                if let Some(op) = op {
+                    let symbol = (Node::Identifier(i.0.clone()), i.1);
+                    let span = n.1;
+                    let op = (Node::Binary(op, Box::new(symbol), Box::new(n)), span);
+                    Node::Declaration(i, Box::new(op))
+                } else {
+                    Node::Declaration(i, Box::new(n))
+                }
+            }
+
             KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::MultiDeclaration(i, Box::new(e)) }
-            i:spanned(<IDENT()>) _ "=" _ e:@  { Node::Assignment(i, Box::new(e)) }
+            i:spanned(<IDENT()>) _  op:op()? "=" _ e:@  {
+                if let Some(op) = op {
+                    let symbol = (Node::Identifier(i.0.clone()), i.1);
+                    let span = e.1;
+                    let op = (Node::Binary(op, Box::new(symbol), Box::new(e)), span);
+                    Node::Assignment(i, Box::new(op))
+                } else {
+                    Node::Assignment(i, Box::new(e))
+                }
+            }
+            // i:spanned(<IDENT()>) _ "+=" _ e:@  {
+            //     let symbol = (Node::Identifier(i.0.clone()), i.1);
+            //     let span = e.1;
+            //     let op = (Node::Binary(Op::Add, Box::new(symbol), Box::new(e)), span);
+            //     Node::Assignment(i,  Box::new(op))
+            // }
+
+
+
             // e:@ _ "[" _ i:node() _ "]" _ "=" _ v:node() { Node::IndexSet(Box::new(e), Box::new(i), Box::new(v)) }
             --
             KW("fn") _ name:spanned(<IDENT()>)? _ "(" _ args:COMMASEP(<spanned(<IDENT()>)>) _ ")" _ body:block(true) {

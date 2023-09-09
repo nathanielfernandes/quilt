@@ -8,7 +8,7 @@ use std::{
 use bytecode::chunk::Chunk;
 use common::{
     error::Error,
-    span::Spanned,
+    span::{Span, Spanned},
     vecc::{GetSize, Vecc},
 };
 
@@ -149,6 +149,17 @@ pub struct Function {
     pub arity: u8,
     pub upvalue_count: u16,
     pub chunk: Chunk<Value>,
+}
+
+impl Function {
+    pub fn blank(name: String) -> Self {
+        Self {
+            name: (name, Span(0, 0, 0)),
+            arity: 0,
+            upvalue_count: 0,
+            chunk: Chunk::new(),
+        }
+    }
 }
 
 impl Hash for Function {
