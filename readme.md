@@ -34,7 +34,7 @@ Quilt is a hobby project of mine. I designed it to be a simple, with a syntax si
 - Short circuiting
 - `break` and `continue` statements
 - error handling (`try` /`catch`)
-- repl
+- ~~repl~~
 
 ## Examples
 
