@@ -2,13 +2,15 @@ pub mod core;
 pub mod io;
 pub mod math;
 pub mod strings;
-mod testing;
+pub mod testing;
+pub mod time;
 
 pub use core::*;
 pub use io::*;
 pub use math::*;
 pub use strings::*;
 pub use testing::testing;
+pub use time::*;
 
 use interpreter::{builtins::VmData, vm::VM};
 
@@ -20,6 +22,8 @@ where
     vm.add_builtins(core);
     vm.add_builtins(math);
     vm.add_builtins(strings);
+    vm.add_builtins(testing);
+    vm.add_builtins(time);
 }
 
 #[inline]
