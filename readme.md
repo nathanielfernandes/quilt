@@ -29,10 +29,11 @@ Quilt is a hobby project of mine. I designed it to be a simple, with a syntax si
 
 ## Roadmap
 
+- optimizations (ie, loop unrolling, tail call optimization, etc)
 - Spread operator
 - Short circuiting
 - `break` and `continue` statements
-- user created errors
+- error handling (`try` /`catch`)
 - repl
 
 ## Examples
@@ -98,6 +99,9 @@ fn NewCounter() {
 
 let incr, decr, get = NewCounter()
 ```
+
+Complete errors, with tracebacks:
+![disassembler](assets/error.png)
 
 ## Disassembler Output
 
