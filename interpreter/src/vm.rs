@@ -130,6 +130,23 @@ where
         }
     }
 
+    pub fn reset_state(&mut self) {
+        self.sp = 0;
+        self.frames.clear();
+        self.frame.ip = 0;
+        self.frame.st = 0;
+        self.open_upvalues.clear();
+        self.block_results.clear();
+        self.exit_fn_stack.clear();
+    }
+
+    pub fn update_script(&mut self, script: Script) {
+        self.reset_state();
+
+        self.frame.closure.function = Rc::new(script.function);
+        self.global_symbols = script.global_symbols;
+    }
+
     pub fn new_with(
         data: Data,
         script: Script,
@@ -185,12 +202,16 @@ where
             .closure
             .function
             .chunk
-            .get_span(self.frame.ip - 1);
+            .get_span(self.frame.ip.saturating_sub(1));
         trace.push((name, span));
 
         for frame in self.frames.iter().skip(1).rev().take(8) {
             let name = frame.closure.function.name.0.clone();
-            let span = frame.closure.function.chunk.get_span(frame.ip - 1);
+            let span = frame
+                .closure
+                .function
+                .chunk
+                .get_span(frame.ip.saturating_sub(1));
             trace.push((name, span));
         }
 
@@ -201,11 +222,11 @@ where
         }
 
         // push the main frame
-        let frame = self.frames.first().expect("no main frame");
-        let name = frame.closure.function.name.0.clone();
-        let span = frame.closure.function.chunk.get_span(frame.ip);
-
-        trace.push((name, span));
+        if let Some(frame) = self.frames.first() {
+            let name = frame.closure.function.name.0.clone();
+            let span = frame.closure.function.chunk.get_span(frame.ip);
+            trace.push((name, span));
+        }
 
         trace
     }

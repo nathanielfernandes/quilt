@@ -1,3 +1,5 @@
+pub mod repl;
+
 use clap::Parser;
 use quilt::prelude::*;
 use std::path::PathBuf;
@@ -9,7 +11,7 @@ use std::path::PathBuf;
 #[command(about = "quilt runtime", long_about = None)]
 struct Args {
     #[clap(name = "main-file", help = "Main file to run")]
-    main_file: PathBuf,
+    main_file: Option<PathBuf>,
 
     #[clap(
         long,
@@ -59,11 +61,40 @@ struct Args {
 }
 
 fn main() {
-    let mut debug = std::time::Instant::now();
     let args = Args::parse();
 
-    let name = args.main_file.display().to_string();
-    let src = match std::fs::read_to_string(&args.main_file) {
+    let mut opts = VmOptions::default();
+
+    if let Some(max_runtime) = args.max_runtime {
+        opts.max_runtime = std::time::Duration::from_millis(max_runtime);
+    }
+
+    if let Some(stack_size) = args.stack_size {
+        opts.stack_size = stack_size;
+    }
+
+    if let Some(call_stack_size) = args.call_stack_size {
+        opts.call_stack_size = call_stack_size;
+    }
+
+    if let Some(string_max_size) = args.string_max_size {
+        opts.string_max_size = string_max_size;
+    }
+
+    if let Some(array_max_size) = args.array_max_size {
+        opts.array_max_size = array_max_size;
+    }
+
+    let Some(main_file) = &args.main_file else {
+        let mut repl = repl::Repl::new((), opts, [qstd::stdio]);
+        repl.start();
+        return;
+    };
+
+    let mut debug = std::time::Instant::now();
+
+    let name = main_file.display().to_string();
+    let src = match std::fs::read_to_string(main_file) {
         Ok(file) => file,
         Err(e) => {
             eprintln!("Error reading file '{}': {}", name, e);
@@ -98,28 +129,6 @@ fn main() {
     if args.debug {
         println!("COMPILED: {:?}", debug.elapsed());
         debug = std::time::Instant::now();
-    }
-
-    let mut opts = VmOptions::default();
-
-    if let Some(max_runtime) = args.max_runtime {
-        opts.max_runtime = std::time::Duration::from_millis(max_runtime);
-    }
-
-    if let Some(stack_size) = args.stack_size {
-        opts.stack_size = stack_size;
-    }
-
-    if let Some(call_stack_size) = args.call_stack_size {
-        opts.call_stack_size = call_stack_size;
-    }
-
-    if let Some(string_max_size) = args.string_max_size {
-        opts.string_max_size = string_max_size;
-    }
-
-    if let Some(array_max_size) = args.array_max_size {
-        opts.array_max_size = array_max_size;
     }
 
     if args.disassemble {

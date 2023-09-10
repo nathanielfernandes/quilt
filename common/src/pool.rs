@@ -1,7 +1,7 @@
 /// A pool of values that can be indexed by a `PoolID`.
 ///
 /// This is useful for storing values that are used multiple times in a program.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Pool<V, ID> {
     pub entries: Vec<V>,
     duplicates: fxhash::FxHashMap<V, ID>,

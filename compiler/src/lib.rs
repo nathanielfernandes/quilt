@@ -23,11 +23,11 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             level: Level {
                 function: Function {
-                    name: (String::from("@__main__"), Span::default()),
+                    name: (name, Span::default()),
                     arity: 0,
                     upvalue_count: 0,
                     chunk: Chunk::new(),
@@ -215,21 +215,50 @@ impl Compiler {
     }
 
     pub fn compile(ast: &Vec<Spanned<Node>>) -> Result<Script, ErrorS> {
-        let mut compiler = Compiler::new();
-
-        if let Some((_, span)) = ast.first() {
-            compiler.level.function.name.1 = *span;
-        }
-
+        let mut compiler = Compiler::new(String::from("@__main__"));
+        compiler.set_main_span(ast);
         compiler.compile_stmnts(ast)?;
-
-        Ok(Script {
-            global_symbols: compiler.global_symbols,
-            function: compiler.level.finish().0,
-        })
+        Ok(compiler.take_as_script())
     }
 
-    fn compile_stmnts(&mut self, exprs: &Vec<Spanned<Node>>) -> Result<Span, ErrorS> {
+    pub fn take_as_script(self) -> Script {
+        Script {
+            global_symbols: self.global_symbols,
+            function: self.level.finish().0,
+        }
+    }
+
+    pub fn clone_as_script(&self) -> Script {
+        Script {
+            global_symbols: self.global_symbols.clone(),
+            function: self.level.clone().finish().0,
+        }
+    }
+
+    pub fn reset_state(&mut self, name: String) {
+        self.level = Level {
+            function: Function {
+                name: (name, Span::default()),
+                arity: 0,
+                upvalue_count: 0,
+                chunk: Chunk::new(),
+            },
+            locals: Vec::new(),
+            upvalues: Vec::new(),
+            enclosing: None,
+            scope_depth: 0, // 0 is global scope
+            symbol_pool: Pool::new(),
+            constant_pool: Pool::<Value, u16>::new(),
+        };
+    }
+
+    pub fn set_main_span(&mut self, ast: &Vec<Spanned<Node>>) {
+        if let Some((_, span)) = ast.first() {
+            self.level.function.name.1 = *span;
+        }
+    }
+
+    pub fn compile_stmnts(&mut self, exprs: &Vec<Spanned<Node>>) -> Result<Span, ErrorS> {
         let mut span = Span::default();
 
         if exprs.len() == 0 {
@@ -877,10 +906,10 @@ impl Compiler {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 struct Upvalue(u16, bool);
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, Clone, PartialEq)]
 struct Local {
     name: String,
     // scope depth (starts at 1)
@@ -891,6 +920,7 @@ struct Local {
     cleanup: bool,
 }
 
+#[derive(Clone)]
 pub struct Level {
     function: Function,
     locals: Vec<Local>,
