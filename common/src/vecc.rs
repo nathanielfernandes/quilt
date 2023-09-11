@@ -75,7 +75,7 @@ impl<T: GetSize> GetSize for Box<T> {
 // A vector with a fixed max memory size.
 // (default is 256kb)
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct Vecc<T>
 where
     T: GetSize,
@@ -83,6 +83,15 @@ where
     data: Vec<T>,
     size: usize,
     max_size: usize,
+}
+
+impl<T> PartialEq for Vecc<T>
+where
+    T: PartialEq + GetSize,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data
+    }
 }
 
 impl<T> Vecc<T>
