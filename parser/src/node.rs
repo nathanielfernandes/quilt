@@ -28,6 +28,11 @@ pub enum Node {
         then: Vec<NodeS>,
         otherwise: Option<Vec<NodeS>>,
     },
+    SwitchCase {
+        value: Box<NodeS>,
+        cases: Vec<(NodeS, Vec<NodeS>)>,
+        default: Option<Vec<NodeS>>,
+    },
     ForLoop {
         variable: Spanned<String>,
         iterable: Box<NodeS>,

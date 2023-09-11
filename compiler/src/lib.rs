@@ -606,6 +606,55 @@ impl Compiler {
                 self.patch_jump(end_jump, *span)?;
             }
 
+            Node::SwitchCase {
+                value,
+                cases,
+                default,
+            } => {
+                self.write_op(LoadNone, *span);
+
+                // compile value to test
+                self.compile_expr(value)?;
+
+                let mut jumps = Vec::new();
+
+                for (case, body) in cases {
+                    // compile case
+                    self.compile_expr(case)?;
+
+                    // if the condition is false, go to else
+                    let else_jump = self.write_jump(JumpIfNotEq, case.1);
+
+                    // pop off value, case and default none
+                    self.write_op_u16(PopMany, 2, case.1);
+
+                    // compile body
+                    self.compile_block(body)?;
+
+                    let end_jump = self.write_jump(JumpForward, case.1);
+
+                    // else
+                    self.patch_jump(else_jump, case.1)?;
+
+                    jumps.push(end_jump);
+                }
+
+                if let Some(body) = default {
+                    // pop off value
+                    // pop off default none
+                    self.write_op_u16(PopMany, 2, *span);
+
+                    self.compile_block(body)?;
+                } else {
+                    // pop off value
+                    self.write_op(Pop, *span);
+                }
+
+                for jump in jumps {
+                    self.patch_jump(jump, *span)?;
+                }
+            }
+
             Node::WhileLoop(cond, body) => {
                 let cspan = cond.1;
 

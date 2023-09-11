@@ -213,7 +213,7 @@ impl<'a> Disassembler<'a> {
                 ));
             }
 
-            JumpIfFalse | JumpForward | JumpBackward | IterNext => {
+            JumpIfFalse | JumpForward | JumpBackward | JumpIfNotEq | IterNext => {
                 let jump_offset = chunk.ops.read_u16(*offset);
                 *offset += 2;
 

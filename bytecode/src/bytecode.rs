@@ -51,6 +51,7 @@ bytecode! {
     BlockResult,
     BlockReturn,
     JumpIfFalse,  // u16
+    JumpIfNotEq,  // u16
     JumpForward,  // u16
     JumpBackward, // u16
     Unpack,       // u8

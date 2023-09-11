@@ -25,7 +25,7 @@ pub trait NamedError {
     fn name(&self) -> &'static str;
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub enum Error {
     #[error("NameError: {0}")]
     NameError(NameError),
@@ -178,7 +178,7 @@ impl NamedError for Error {
     }
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub enum TypeError {
     #[error("expected `{0}` got `{1}`")]
     Expected(ValueType, ValueType),
@@ -245,7 +245,7 @@ impl NamedError for TypeError {
     }
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub enum NameError {
     #[error("name {0:?} is not defined")]
     Undefined(String),
@@ -267,7 +267,7 @@ impl NamedError for NameError {
     }
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub enum OverflowError {
     #[error("an array cannot have more than 256 items")]
     TooManyItems,
@@ -317,7 +317,7 @@ impl NamedError for OverflowError {
     }
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub enum IncludeError {
     #[error("includes can only be at the top level of a file")]
     IncludeNotTopLevel,
@@ -343,7 +343,7 @@ impl NamedError for IncludeError {
     }
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub struct Expected(pub Vec<&'static str>);
 
 impl std::fmt::Display for Expected {
@@ -359,7 +359,7 @@ impl std::fmt::Display for Expected {
     }
 }
 
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub enum SyntaxError {
     #[error("unexpected token at line {line}, column {column}, expected one of {expected}")]
     UnexpectedToken {
@@ -410,7 +410,7 @@ impl_from_error!(
 /// - `help`: An optional help message.
 /// - `span`: The span of the error.
 /// - `color`: The color of the error message.
-#[derive(Debug, Error, Clone, Eq, PartialEq)]
+#[derive(Debug, Error, Clone, Eq, PartialEq, Hash)]
 pub struct BuiltinError {
     pub msg: String,
     pub help: Option<String>,

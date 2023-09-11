@@ -29,7 +29,7 @@ peg::parser!(
 
         rule IDENT() -> String
         = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {?
-            if matches!(n, "true" | "false" | "none" | "let" | "fn" | "include" | "with" | "as" | "while" | "for" | "in" | "return") {
+            if matches!(n, "true" | "false" | "none" | "let" | "fn" | "include" | "with" | "as" | "while" | "for" | "in" | "return" | "switch" | "default" | "case") {
                 return Err("Invalid identifier");
             }
 
@@ -100,6 +100,29 @@ peg::parser!(
             }
         }
 
+        rule case() -> (Vec<Spanned<Node>>, Vec<Spanned<Node>>)
+        = _ KW("case") _ value:(node() ++ (_ "," _))  _ code:block(false) _ { (value, code) }
+
+        rule default_case() -> Vec<Spanned<Node>>
+        = _ KW("default") _ code:block(false) _ { code }
+
+        rule switch_case() -> Node
+        = _ KW("switch") _ value:node() _ "{" _ cases:(case() ** _) _ default:default_case()? _ "}" _ {
+            let mut fcases = Vec::with_capacity(cases.len());
+
+            for (values, code) in cases {
+                for value in values {
+                    fcases.push((value, code.clone()));
+                }
+            }
+
+            Node::SwitchCase {
+                value: Box::new(value),
+                cases: fcases,
+                default
+            }
+        }
+
         rule op() -> Op
         = "+" { Op::Add }
         / "-" { Op::Sub }
@@ -132,7 +155,6 @@ peg::parser!(
                     Node::Declaration(i, Box::new(n))
                 }
             }
-
             KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::MultiDeclaration(i, Box::new(e)) }
             i:spanned(<IDENT()>) _  op:op()? "=" _ e:@  {
                 if let Some(op) = op {
@@ -168,6 +190,7 @@ peg::parser!(
             }
             --
             conditional:if_condition() { conditional }
+            switch:switch_case() { switch }
             --
             KW("while") _ condition:node() _ body:block(false) {
                 Node::WhileLoop(

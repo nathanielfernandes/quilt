@@ -775,6 +775,15 @@ where
                     }
                 }
 
+                JumpIfNotEq => {
+                    let offset = self.read_u16() as usize;
+                    let (value, case) = self.pop_peek(0)?;
+                    // println!("jump if not eq: {} != {}", value, case);
+                    if value != case {
+                        self.frame.ip += offset;
+                    }
+                }
+
                 NewLoopCtx => {
                     self.push(Value::LoopCtx(0))?;
                 }
@@ -1161,6 +1170,16 @@ where
         }
 
         Ok(&self.stack[self.sp - distance - 1])
+    }
+
+    #[inline]
+    fn pop_peek(&mut self, distance: usize) -> Result<(&Value, &Value), ErrorS> {
+        if self.sp < distance + 2 {
+            return Err(self.error(OverflowError::StackUnderflow.into()));
+        }
+        self.sp -= 1;
+
+        Ok((&self.stack[self.sp - distance - 1], &self.stack[self.sp]))
     }
 
     // #[inline]

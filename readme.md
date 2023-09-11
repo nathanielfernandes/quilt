@@ -54,6 +54,21 @@ fn fib(n) {
 fib(30)
 
 
+// switch case statements
+fn fib(n) {
+    switch n {
+        case 0, 1 {
+            n
+        }
+
+        default {
+            fib(n - 1) + fib(n - 2)
+        }
+    }
+}
+
+fib(20)
+
 // loops
 let i = 0
 // assignements are expressions (as well as if statements and loops)

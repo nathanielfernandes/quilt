@@ -30,6 +30,30 @@ impl GetSize for Value {
     }
 }
 
+// #[derive(Debug, Clone, PartialEq)]
+// pub enum RuntimeError {
+//     Simple(String),
+//     Error(Error),
+// }
+
+// impl std::fmt::Display for RuntimeError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             RuntimeError::Simple(s) => write!(f, "{}", s),
+//             RuntimeError::Error(e) => write!(f, "{}", e),
+//         }
+//     }
+// }
+
+// impl Hash for RuntimeError {
+//     fn hash<H: Hasher>(&self, state: &mut H) {
+//         match self {
+//             RuntimeError::Simple(s) => s.hash(state),
+//             RuntimeError::Error(e) => e.hash(state),
+//         }
+//     }
+// }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     None,
@@ -51,6 +75,7 @@ pub enum Value {
     // Spread(Rc<Vec<Value>>),
     Function(Rc<Function>),
     Closure(Rc<Closure>),
+    // Error(Rc<RuntimeError>),
 }
 
 impl std::fmt::Display for Value {
@@ -89,6 +114,7 @@ impl std::fmt::Display for Value {
             Value::Closure(closure) => write!(f, "<closure {}>", closure.function.name.0),
 
             Value::LoopCtx(idx) => write!(f, "<loop_ctx {}>", idx),
+            // Value::Error(err) => write!(f, "<error {}>", err),
         }
     }
 }
@@ -111,6 +137,7 @@ impl Value {
             Value::Function(_) => "function",
             Value::Closure(_) => "closure",
             Value::LoopCtx(_) => "loop_ctx",
+            // Value::Error(_) => "error",
         }
     }
 }
@@ -137,6 +164,7 @@ impl Hash for Value {
             Value::Function(f) => f.hash(state),
             Value::Closure(c) => c.hash(state),
             Value::LoopCtx(idx) => idx.hash(state),
+            // Value::Error(e) => e.hash(state),
         }
     }
 }
