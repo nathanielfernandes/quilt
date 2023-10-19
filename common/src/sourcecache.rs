@@ -5,6 +5,8 @@ pub struct Src {
     pub name: String,
     pub source: Source,
 }
+
+#[derive(Default)]
 pub struct SourceCache {
     sources: Vec<Src>,
 }

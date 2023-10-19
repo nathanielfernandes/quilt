@@ -94,6 +94,8 @@ impl<'a> Disassembler<'a> {
                     opcode: opcode.name(),
                     oparg: None,
                     hint: None,
+                    raw_opcode: opcode,
+                    raw_opargs: Vec::new(),
                 };
 
                 offset += 1;
@@ -124,6 +126,8 @@ impl<'a> Disassembler<'a> {
 
             LoadConst | CreateFunction => {
                 let const_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(const_offset);
+
                 *offset += 2;
 
                 let constant = chunk.get_constant(const_offset);
@@ -134,6 +138,8 @@ impl<'a> Disassembler<'a> {
 
             DefineGlobal | LoadGlobal | SetGlobal => {
                 let global_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(global_offset);
+
                 *offset += 2;
 
                 let symbol = self
@@ -149,6 +155,8 @@ impl<'a> Disassembler<'a> {
 
             LoadLocal | SetLocal => {
                 let local_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(local_offset);
+
                 *offset += 2;
 
                 let symbol = chunk.force_symbol(local_offset).to_string();
@@ -159,16 +167,22 @@ impl<'a> Disassembler<'a> {
 
             CreateClosure => {
                 let const_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(const_offset);
+
                 *offset += 2;
 
                 if let Value::Function(func) = chunk.get_constant(const_offset) {
                     let (name, line_number, filename) = self.extract_fn(func);
 
                     for _ in 0..func.upvalue_count {
-                        chunk.ops.read_u8(*offset);
+                        let a = chunk.ops.read_u8(*offset);
+                        line.raw_opargs.push(a as u16);
+
                         *offset += 1;
 
-                        chunk.ops.read_u16(*offset);
+                        let a = chunk.ops.read_u16(*offset);
+                        line.raw_opargs.push(a);
+
                         *offset += 2;
                     }
 
@@ -184,6 +198,8 @@ impl<'a> Disassembler<'a> {
 
             LoadUpvalue | SetUpvalue | PopMany => {
                 let upvalue_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(upvalue_offset);
+
                 *offset += 2;
 
                 line.oparg = Some(upvalue_offset);
@@ -191,6 +207,7 @@ impl<'a> Disassembler<'a> {
 
             CallFunction | Unpack | CreateArray | LoadNoneMany => {
                 let arg_count = chunk.ops.read_u8(*offset);
+                line.raw_opargs.push(arg_count as u16);
                 *offset += 1;
 
                 line.oparg = Some(arg_count as u16);
@@ -198,9 +215,11 @@ impl<'a> Disassembler<'a> {
 
             CallBuiltin | EnterContext => {
                 let builtin_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(builtin_offset);
                 *offset += 2;
 
                 let arg_count = chunk.ops.read_u8(*offset);
+                line.raw_opargs.push(arg_count as u16);
                 *offset += 1;
 
                 line.oparg = Some(arg_count as u16);
@@ -215,6 +234,8 @@ impl<'a> Disassembler<'a> {
 
             JumpIfFalse | JumpForward | JumpBackward | JumpIfNotEq | IterNext => {
                 let jump_offset = chunk.ops.read_u16(*offset);
+                line.raw_opargs.push(jump_offset);
+
                 *offset += 2;
 
                 let jump_addr = if let JumpBackward = op {

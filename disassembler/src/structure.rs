@@ -45,6 +45,9 @@ pub struct Line {
     pub opcode: &'static str,
     pub oparg: Option<u16>,
     pub hint: Option<Hint>,
+
+    pub raw_opcode: u8,
+    pub raw_opargs: Vec<u16>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
