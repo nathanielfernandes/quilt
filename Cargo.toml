@@ -20,8 +20,6 @@ interpreter = { path = "./interpreter" }
 qstd = { path = "./qstd", optional = true }
 disassembler = { path = "./disassembler", optional = true }
 
-serde_json = { version = "1.0.80" }
-
 [workspace]
 members = [
     "common",
