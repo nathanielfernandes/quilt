@@ -50,7 +50,7 @@ macro_rules! generate_builtins {
 
             paste! {
                 #[allow(non_upper_case_globals, unused_variables)]
-                const [<$group _DOCS>]: BuiltinGroup = BuiltinGroup {
+                pub const [<$group _DOCS>]: BuiltinGroup = BuiltinGroup {
                     name: stringify!($group),
                     description: concat!($($groupdoc, '\n'), *),
                     builtins: &[
@@ -132,7 +132,7 @@ macro_rules! generate_builtins {
 
             paste! {
                 #[allow(non_upper_case_globals, unused_variables)]
-                const [<$group _DOCS>]: BuiltinGroup = BuiltinGroup {
+                pub const [<$group _DOCS>]: BuiltinGroup = BuiltinGroup {
                     name: stringify!($group),
                     description: concat!($($groupdoc, '\n'), *),
                     builtins: &[
@@ -222,7 +222,7 @@ macro_rules! generate_builtins {
 
             paste! {
                 #[allow(non_upper_case_globals, unused_variables)]
-                const [<$group _DOCS>]: BuiltinGroup = BuiltinGroup {
+                pub const [<$group _DOCS>]: BuiltinGroup = BuiltinGroup {
                     name: stringify!($group),
                     description: concat!($($groupdoc, '\n'), *),
                     builtins: &[

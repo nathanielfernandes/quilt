@@ -8,9 +8,11 @@ use interpreter::{
 };
 
 generate_builtins! {
+    ///Basic builtin functions
     [export=core]
 
-    fn @get(list: list, index: int) {
+    ///Get an item from a list at a given index
+    fn @get(list: list, index: int) -> any {
         let idx = fix_index(index, list.len())?;
 
         if let Some(v) = list.get(idx) {
@@ -21,7 +23,8 @@ generate_builtins! {
     }
 
     [options]
-    fn @set(list: list, index: int, value: any) {
+    ///Set an item in a list at a given index
+    fn @set(list: list, index: int, value: any) -> list {
         let idx = fix_index(index, list.len())?;
 
         let mut list = list;
@@ -33,7 +36,8 @@ generate_builtins! {
         }
     }
 
-    fn @slice(list: list, start: int, end: int) {
+    ///Get a slice of a list
+    fn @slice(list: list, start: int, end: int) -> list {
         let len = list.len() as i64;
 
         // only allow negative indices if they are in bounds
@@ -64,23 +68,28 @@ generate_builtins! {
         list[start as usize..end as usize].to_vec().into()
     }
 
-    fn @str(arg: any) {
+    ///Convert a value to a string
+    fn @str(arg: any) -> str {
         arg.to_string().into()
     }
 
-    fn @bin(val: int) {
+    ///Convert an integer to its binary representation as a string
+    fn @bin(val: int) -> str {
         format!("{:b}", val).into()
     }
 
-    fn @oct(val: int) {
+    ///Convert an integer to its octal representation as a string
+    fn @oct(val: int) -> str {
         format!("{:o}", val).into()
     }
 
-    fn @hex(val: int) {
+    ///Convert an integer to its hexadecimal representation as a string
+    fn @hex(val: int) -> str {
         format!("{:x}", val).into()
     }
 
-    fn @char(val: int) {
+    ///Convert a character code to a string
+    fn @char(val: int) -> str {
         if let Some(c) = std::char::from_u32(val as u32) {
             c.to_string().into()
         } else {
@@ -88,7 +97,8 @@ generate_builtins! {
         }
     }
 
-    fn @int_from_radix(val: str, radix: int32) {
+    ///Convert a string to an integer with a given radix
+    fn @int_from_radix(val: str, radix: int32) -> int {
         // if radix is not from 2 to 36, return an error
         if radix < 2 || radix > 36 {
             Err(error(format!(
@@ -103,7 +113,8 @@ generate_builtins! {
         }
     }
 
-    fn @int(arg: any) {
+    ///Convert a value to an integer
+    fn @int(arg: any) -> int {
         match &arg {
             Value::Int(i) => Value::Int(*i),
             Value::Float(f) => Value::Int(*f as i64),
@@ -115,7 +126,8 @@ generate_builtins! {
         }
     }
 
-    fn @float(arg: any) {
+    ///Convert a value to a float
+    fn @float(arg: any) -> float {
         match &arg {
             Value::Int(i) => Value::Float(*i as f64),
             Value::Float(f) => Value::Float(*f),
@@ -127,7 +139,8 @@ generate_builtins! {
         }
     }
 
-    fn @bool(arg: any) {
+    ///Convert a value to a boolean
+    fn @bool(arg: any) -> bool {
         match &arg {
             Value::Bool(b) => Value::Bool(*b),
             Value::Int(i) => Value::Bool(*i != 0),
@@ -140,7 +153,8 @@ generate_builtins! {
         }
     }
 
-    fn @len(arg: any) {
+    ///Get the length of an array or string
+    fn @len(arg: any) -> int {
         match &arg {
             Value::Array(l) => Value::Int(l.len() as i64),
             Value::String(s) => Value::Int(s.len() as i64),
@@ -148,47 +162,58 @@ generate_builtins! {
         }
     }
 
-    fn @rgba(r: u8, g: u8, b: u8, a: u8) {
+    ///Create a color from RGBA values
+    fn @rgba(r: u8, g: u8, b: u8, a: u8) -> color {
         Value::Color([r, g, b, a])
     }
 
-    fn @rgb(r: u8, g: u8, b: u8) {
+    ///Create a color from RGB values
+    fn @rgb(r: u8, g: u8, b: u8) -> color {
         Value::Color([r, g, b, 255])
     }
 
-    fn @hsla(h: double, s: double, l: double, a: double) {
+    ///Create a color from HSLA values
+    fn @hsla(h: double, s: double, l: double, a: double) -> color {
         Value::Color(hsla_to_rgba(h, s, l, a))
     }
 
-    fn @hsl(h: double, s: double, l: double) {
+    ///Create a color from HSL values
+    fn @hsl(h: double, s: double, l: double) -> color {
         Value::Color(hsla_to_rgba(h, s, l, 1.0))
     }
 
-    fn @hsva(h: double, s: double, v: double, a: double) {
+    ///Create a color from HSVA values
+    fn @hsva(h: double, s: double, v: double, a: double) -> color {
         Value::Color(hsva_to_rgba(h, s, v, a))
     }
 
-    fn @hsv(h: double, s: double, v: double) {
+    ///Create a color from HSV values
+    fn @hsv(h: double, s: double, v: double) -> color {
         Value::Color(hsva_to_rgba(h, s, v, 1.0))
     }
 
-    fn @gettype(arg: any) {
+    ///Get the type of a value as a string
+    fn @gettype(arg: any) -> str {
         arg.ntype().into()
     }
 
-    fn @r(c: color) {
+    ///Get the Red value of a color
+    fn @r(c: color) -> int {
         Value::Int(c[0] as i64)
     }
 
-    fn @g(c: color) {
+    ///Get the Green value of a color
+    fn @g(c: color) -> int {
         Value::Int(c[1] as i64)
     }
 
-    fn @b(c: color) {
+    ///Get the Blue value of a color
+    fn @b(c: color) -> int {
         Value::Int(c[2] as i64)
     }
 
-    fn @a(c: color) {
+    ///Get the Alpha value of a color
+    fn @a(c: color) -> int {
         Value::Int(c[3] as i64)
     }
 }
