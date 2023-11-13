@@ -2,14 +2,13 @@ use common::error::{Error, TypeError};
 use interpreter::{
     arith::fix_index,
     builtins::*,
-    generic_builtins,
+    generate_builtins,
     value::{make_value_array, Value},
     vm::*,
 };
 
-generic_builtins! {
+generate_builtins! {
     [export=core]
-    [vm_options=options]
 
     fn @get(list: list, index: int) {
         let idx = fix_index(index, list.len())?;
@@ -21,6 +20,7 @@ generic_builtins! {
         }
     }
 
+    [options]
     fn @set(list: list, index: int, value: any) {
         let idx = fix_index(index, list.len())?;
 

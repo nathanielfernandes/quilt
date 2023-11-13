@@ -1,9 +1,8 @@
 use common::error::Error;
-use interpreter::{builtins::*, generic_builtins, value::Value, vm::*};
+use interpreter::{builtins::*, generate_builtins, value::Value, vm::*};
 
-generic_builtins! {
+generate_builtins! {
     [export=time]
-    [vm_options=options]
 
     fn @now() {
         match std::time::SystemTime::now()

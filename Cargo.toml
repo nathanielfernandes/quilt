@@ -8,7 +8,8 @@ edition = "2021"
 name = "quilt"
 
 [features]
-default = ["disassembler", "qstd"]
+default = ["disassembler", "qstd", "serde_docs"]
+serde_docs = ["interpreter/serde_docs"]
 
 [dependencies]
 common = { path = "./common" }
@@ -18,6 +19,8 @@ compiler = { path = "./compiler" }
 interpreter = { path = "./interpreter" }
 qstd = { path = "./qstd", optional = true }
 disassembler = { path = "./disassembler", optional = true }
+
+serde_json = { version = "1.0.80" }
 
 [workspace]
 members = [

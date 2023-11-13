@@ -4,12 +4,11 @@ use std::{
 };
 
 use common::error::{Error, TypeError};
-use interpreter::{builtins::*, generic_builtins, value::Value, vm::*};
+use interpreter::{builtins::*, generate_builtins, value::Value, vm::*};
 use rand::Rng;
 
-generic_builtins! {
+generate_builtins! {
     [export=math]
-    [vm_options=options]
 
     fn @log(arg: any) {
         match arg {

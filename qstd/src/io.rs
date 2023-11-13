@@ -1,11 +1,10 @@
 use std::io::Write;
 
 use common::error::Error;
-use interpreter::{builtins::*, generic_builtins, value::Value, vm::*};
+use interpreter::{builtins::*, generate_builtins, value::Value, vm::*};
 
-generic_builtins! {
+generate_builtins! {
     [export=io]
-    [vm_options=_options]
 
     fn @print(to_print: rest) {
         for arg in to_print {

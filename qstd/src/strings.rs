@@ -1,14 +1,14 @@
 use common::error::Error;
 use interpreter::{
     builtins::*,
-    generic_builtins,
+    generate_builtins,
     value::{make_value_array, Value},
     vm::*,
 };
 
-generic_builtins! {
+generate_builtins! {
     [export=strings]
-    [vm_options=options]
+
 
     fn @truncate(s: str, len: int, ellipsis: str) {
         // factor in the length of the ellipsis
@@ -66,6 +66,7 @@ generic_builtins! {
         s.to_lowercase().into()
     }
 
+    [options]
     fn @split(s: str, sep: str) {
         make_value_array(s.split(&sep).map(|s| s.into()).collect::<Vec<Value>>(), options.array_max_size)?
     }
