@@ -4,10 +4,10 @@ use common::error::Error;
 use interpreter::{builtins::*, generate_builtins, value::Value, vm::*};
 
 generate_builtins! {
-    ///IO functions
+    ///IO functions.
     [export=io]
 
-    ///Print a value to stdout
+    ///Print a value to stdout.
     fn @println(to_print: rest) {
         for arg in to_print {
             print!("{} ", arg);
@@ -16,7 +16,7 @@ generate_builtins! {
         Value::None
     }
 
-    ///Print a value to stdout, without a newline
+    ///Print a value to stdout, without a newline.
     fn @print(to_print: rest) {
         for arg in to_print {
             print!("{} ", arg);
@@ -24,7 +24,7 @@ generate_builtins! {
         Value::None
     }
 
-    ///Print marked debug value to stdout
+    ///Print marked debug value to stdout.
     fn @debug(to_print: rest) {
         // orange
         print!("\x1b[38;5;208mDEBUG: ");
@@ -37,7 +37,7 @@ generate_builtins! {
         Value::None
     }
 
-    ///Get a value from stdin
+    ///Get a value from stdin.
     fn @input(prompt: str) -> str {
         print!("{}", prompt);
         if let Ok(_) = std::io::stdout().flush() {

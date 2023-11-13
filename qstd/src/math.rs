@@ -8,10 +8,10 @@ use interpreter::{builtins::*, generate_builtins, value::Value, vm::*};
 use rand::Rng;
 
 generate_builtins! {
-    ///Math functions
+    ///Math functions.
     [export=math]
 
-    ///Compute the log10 of a number
+    ///Compute the log10 of a number.
     fn @log(arg: any) -> float {
         match arg {
             Value::Int(i) => Value::Float((i as f64).log10()),
@@ -20,7 +20,7 @@ generate_builtins! {
         }
     }
 
-    ///Compute the log2 of a number
+    ///Compute the log2 of a number.
     fn @log2(arg: any) -> float {
         match arg {
             Value::Int(i) => Value::Float((i as f64).log2()),
@@ -29,7 +29,7 @@ generate_builtins! {
         }
     }
 
-    ///Compute the log10 of a number
+    ///Compute the log10 of a number.
     fn @log10(arg: any) -> float {
         match arg {
             Value::Int(i) => Value::Float((i as f64).log10()),
@@ -38,7 +38,7 @@ generate_builtins! {
         }
     }
 
-    ///Compute an arbitrary hash of a value
+    ///Compute an arbitrary hash of a value.
     fn @hash(arg: any) -> int {
         use Value::*;
         match arg {
@@ -59,7 +59,7 @@ generate_builtins! {
         }
     }
 
-    ///Get the min of two numbers
+    ///Get the min of two numbers.
     fn @min(a: any, b: any) -> num {
         match (&a, &b) {
             (Value::Int(a), Value::Int(b)) => Value::Int(*a.min(b)),
@@ -70,7 +70,7 @@ generate_builtins! {
         }
     }
 
-    ///Get the max of two numbers
+    ///Get the max of two numbers.
     fn @max(a: any, b: any) -> num {
         match (&a, &b) {
             (Value::Int(a), Value::Int(b)) => Value::Int(*a.max(b)),
@@ -81,7 +81,7 @@ generate_builtins! {
         }
     }
 
-    ///Round a number to the nearest whole number
+    ///Round a number to the nearest whole number.
     fn @round(a: any) -> int {
         match a {
             Value::Int(i) => Value::Int(i),
@@ -90,7 +90,7 @@ generate_builtins! {
         }
     }
 
-    ///Round a number down to the nearest whole number
+    ///Round a number down to the nearest whole number.
     fn @floor(a: any) -> int {
         match a {
             Value::Int(i) => Value::Int(i),
@@ -99,7 +99,7 @@ generate_builtins! {
         }
     }
 
-    ///Round a number up to the nearest whole number
+    ///Round a number up to the nearest whole number.
     fn @ceil(a: any) -> int {
         match a {
             Value::Int(i) => Value::Int(i),
@@ -108,7 +108,7 @@ generate_builtins! {
         }
     }
 
-    ///Fix number to n digits after the decimal point
+    ///Fix number to n digits after the decimal point.
     fn @fix(a: any, digits: int) -> num {
         match (&a, digits) {
             (Value::Int(i), 0) => Value::Int(*i),
@@ -119,7 +119,7 @@ generate_builtins! {
         }
     }
 
-    ///Clamp a number between two values
+    ///Clamp a number between two values.
     fn @clamp(a: num, m: num, mm: num) -> float {
         if m > mm {
             Err(error("min must be less than max"))?
@@ -132,7 +132,7 @@ generate_builtins! {
         Value::Float(a.clamp(m, mm))
     }
 
-    ///Get the absolute value of a number
+    ///Get the absolute value of a number.
     fn @abs(a: any) -> num {
         match a {
             Value::Int(a) => Value::Int(a.abs()),
@@ -141,57 +141,57 @@ generate_builtins! {
         }
     }
 
-    ///Compute the sin of a number in radians
+    ///Compute the sin of a number in radians.
     fn @sin(a: num) -> float {
         Value::Float(a.sin())
     }
 
-    ///Compute the cos of a number in radians
+    ///Compute the cos of a number in radians.
     fn @cos(a: num) -> float {
         Value::Float(a.cos())
     }
 
-    ///Compute the tan of a number in radians
+    ///Compute the tan of a number in radians.
     fn @tan(a: num) -> float {
         Value::Float(a.tan())
     }
 
-    ///Compute the asin of a number in radians
+    ///Compute the asin of a number in radians.
     fn @asin(a: num) -> float {
         Value::Float(a.asin())
     }
 
-    ///Compute the acos of a number in radians
+    ///Compute the acos of a number in radians.
     fn @acos(a: num) -> float {
         Value::Float(a.acos())
     }
 
-    ///Compute the atan of a number in radians
+    ///Compute the atan of a number in radians.
     fn @atan(a: num) -> float {
         Value::Float(a.atan())
     }
 
-    ///Compute the atan2 of a number in radians
+    ///Compute the atan2 of a number in radians.
     fn @atan2(a: num, b: num) -> float {
         Value::Float(a.atan2(b))
     }
 
-    ///Compute the sqrt of a number
+    ///Compute the sqrt of a number.
     fn @sqrt(a: num) -> float {
         Value::Float(a.sqrt())
     }
 
-    ///Get a random number between 0 and 1
+    ///Get a random number between 0 and 1.
     fn @random() -> float {
         Value::Float(rand::random())
     }
 
-    ///Get a random boolean
+    ///Get a random boolean.
     fn @randbool() -> bool {
         Value::Bool(rand::random())
     }
 
-    ///Get a random integer between two values
+    ///Get a random integer between two values.
     fn @randint(start: int, end: int) -> int {
         if start >= end {
             Err(error("start must be less than end"))?
@@ -200,7 +200,7 @@ generate_builtins! {
         Value::Int(rand::thread_rng().gen_range(start..end))
     }
 
-    ///Get a random float between two values
+    ///Get a random float between two values.
     fn @randfloat(start: double, end: double) -> float {
         if start >= end {
             Err(error("start must be less than end"))?
@@ -209,7 +209,7 @@ generate_builtins! {
         Value::Float(rand::thread_rng().gen_range(start..end))
     }
 
-    ///Get a random value from a list
+    ///Get a random value from a list.
     fn @randchoice(list: list) -> any {
         let mut list = list;
         if list.is_empty() {
@@ -220,27 +220,27 @@ generate_builtins! {
         list.swap_remove(idx)
     }
 
-    ///Compute the luminance of a color
+    ///Compute the luminance of a color.
     fn @luma(c: color) -> float {
         Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
     }
 
-    ///Compute the hue of a color
+    ///Compute the hue of a color.
     fn @hue(c: color) -> float {
         Value::Float(c[0] as f64 * 0.299 + c[1] as f64  * 0.587 + c[2] as f64  * 0.114)
     }
 
-    ///Compute the saturation of a color
+    ///Compute the saturation of a color.
     fn @saturation(c: color) -> float {
         Value::Float((c[0] as f64 - 0.5).abs() + (c[1] as f64 - 0.5).abs() + (c[2] as f64 - 0.5).abs())
     }
 
-    ///Compute the brightness of a color
+    ///Compute the brightness of a color.
     fn @brightness(c: color) -> float {
         Value::Float(c[0] as f64 * 0.299 + c[1] as f64  * 0.587 + c[2] as f64  * 0.114)
     }
 
-    ///Compute the contrast of a color
+    ///Compute the contrast of a color.
     fn @contrast(c: color) -> float {
         Value::Float((c[0] as f64 - 0.5).abs() + (c[1] as f64 - 0.5).abs() + (c[2] as f64 - 0.5).abs())
     }

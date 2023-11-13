@@ -2,10 +2,10 @@ use common::error::Error;
 use interpreter::{builtins::*, generate_builtins, value::Value, vm::*};
 
 generate_builtins! {
-    ///Time functions
+    ///Time functions.
     [export=time]
 
-    ///Get the current time in seconds since the unix epoch
+    ///Get the current time in seconds since the unix epoch.
     fn @now() -> float {
         match std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH) {
@@ -14,7 +14,7 @@ generate_builtins! {
             }
     }
 
-    ///Get the current date in the format: YYYY-MM-DD HH:MM:SS
+    ///Get the current date in the format: YYYY-MM-DD HH:MM:SS.
     fn @date() -> str {
         let now = match std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH) {
