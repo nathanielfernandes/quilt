@@ -1,3 +1,4 @@
+pub mod colors;
 pub mod core;
 pub mod io;
 pub mod math;
@@ -5,6 +6,7 @@ pub mod strings;
 pub mod testing;
 pub mod time;
 
+pub use colors::*;
 pub use core::*;
 pub use io::*;
 pub use math::*;
@@ -21,6 +23,7 @@ where
 {
     vm.add_builtins(core);
     vm.add_builtins(math);
+    vm.add_builtins(colors);
     vm.add_builtins(strings);
     vm.add_builtins(testing);
     vm.add_builtins(time);

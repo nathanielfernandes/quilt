@@ -36,6 +36,34 @@ Quilt is a hobby project of mine. I designed it to be a simple, with a syntax si
 - error handling (`try` /`catch`)
 - ~~repl~~
 
+## Installation
+
+clone the repo
+
+```
+git clone https://github.com/nathanielfernandes/quilt
+```
+
+install the binary
+
+```
+cargo install --path ./cli
+```
+
+## Usage
+
+once installed, you can run the binary with a file path
+
+```
+quilt main.ql
+```
+
+the binary also as a few options, check them out with
+
+```
+quilt --help
+```
+
 ## Examples
 
 ```rust
@@ -139,19 +167,21 @@ fib(30)
 Builtins can be created with an easy to use macro. The macro will generate the callable functions and put them all into the same module. The module can then be added to the vm.
 
 ```rust
-generic_builtins! {
+generate_builtins! {
     [export=math] // builtin module name
-    [vm_options=options] // (optional) what variable name to bind the vm options
 
-    fn @sqrt(a: num) {
+    ///Compute the sqrt of a number.
+    fn @sqrt(a: num) -> float {
         Value::Float(a.sqrt())
     }
 
-    fn @random() {
+    ///Get a random number between 0 and 1.
+    fn @random() -> float {
         Value::Float(rand::random())
     }
 
-    fn @randint(start: int, end: int) {
+    ///Get a random integer between two values.
+    fn @randint(start: int, end: int) -> int {
         if start >= end {
             Err(error("start must be less than end"))?
         }
@@ -159,7 +189,8 @@ generic_builtins! {
         Value::Int(rand::thread_rng().gen_range(start..end))
     }
 
-    fn @randfloat(start: double, end: double) {
+    ///Get a random float between two values.
+    fn @randfloat(start: double, end: double) -> float {
         if start >= end {
             Err(error("start must be less than end"))?
         }
@@ -167,17 +198,8 @@ generic_builtins! {
         Value::Float(rand::thread_rng().gen_range(start..end))
     }
 
-    fn @randchoice(list: list) {
-        let mut list = list;
-        if list.is_empty() {
-            Err(error("list must not be empty"))?
-        }
-
-        let idx = rand::thread_rng().gen_range(0..list.len());
-        list.swap_remove(idx)
-    }
-
-    fn @luma(c: color) {
+    ///Compute the luminance of a color.
+    fn @luma(c: color) -> float {
         Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
     }
 }
@@ -190,38 +212,6 @@ let mut vm: VM<i32> = VM::new(state, script, ops);
 
 vm.add_builtins(math);
 ```
-
-## Installation
-
-clone the repo
-
-```
-git clone https://github.com/nathanielfernandes/quilt
-```
-
-install the binary
-
-```
-cargo install --path ./cli
-```
-
-## Usage
-
-once installed, you can run the binary with a file path
-
-```
-quilt main.ql
-```
-
-the binary also as a few options, check them out with
-
-```
-quilt --help
-```
-
-## Benchmarks
-
-coming soon...
 
 ## ByteCode
 

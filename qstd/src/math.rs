@@ -219,29 +219,4 @@ generate_builtins! {
         let idx = rand::thread_rng().gen_range(0..list.len());
         list.swap_remove(idx)
     }
-
-    ///Compute the luminance of a color.
-    fn @luma(c: color) -> float {
-        Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
-    }
-
-    ///Compute the hue of a color.
-    fn @hue(c: color) -> float {
-        Value::Float(c[0] as f64 * 0.299 + c[1] as f64  * 0.587 + c[2] as f64  * 0.114)
-    }
-
-    ///Compute the saturation of a color.
-    fn @saturation(c: color) -> float {
-        Value::Float((c[0] as f64 - 0.5).abs() + (c[1] as f64 - 0.5).abs() + (c[2] as f64 - 0.5).abs())
-    }
-
-    ///Compute the brightness of a color.
-    fn @brightness(c: color) -> float {
-        Value::Float(c[0] as f64 * 0.299 + c[1] as f64  * 0.587 + c[2] as f64  * 0.114)
-    }
-
-    ///Compute the contrast of a color.
-    fn @contrast(c: color) -> float {
-        Value::Float((c[0] as f64 - 0.5).abs() + (c[1] as f64 - 0.5).abs() + (c[2] as f64 - 0.5).abs())
-    }
 }

@@ -153,6 +153,48 @@ generate_builtins! {
         }
     }
 
+    ///Convert a value to a color
+    fn @color(arg: any) -> color {
+        match &arg {
+            Value::Color(c) => Value::Color(*c),
+            // decimal to rgba
+            Value::Int(i) => {
+                let r = (i >> 24) as u8;
+                let g = (i >> 16) as u8;
+                let b = (i >> 8) as u8;
+                let a = *i as u8;
+
+                Value::Color([r, g, b, a])
+            }
+            Value::String(ss) => {
+                let s = ss.trim_matches('#');
+                let mut color = [0, 0, 0, 255];
+
+                // take only the first 8 characters
+                let chars = s.chars().take(8).collect::<Vec<char>>();
+
+                if chars.len() == 8 || chars.len() == 6 {
+                    for (i, c) in chars.chunks(2).enumerate() {
+                        let c = c.iter().collect::<String>();
+                        let c = u8::from_str_radix(&c, 16).unwrap_or(0);
+                        color[i] = c;
+                    }
+                } else if chars.len() == 3 {
+                    for (i, c) in chars.iter().enumerate() {
+                        let c = c.to_string().repeat(2);
+                        let c = u8::from_str_radix(&c, 16).unwrap_or(0);
+                        color[i] = c;
+                    }
+                } else {
+                    Err(error(format!("invalid color `{}`", ss)))?
+                }
+
+                Value::Color(color)
+            }
+            _ => Err(TypeError::CannotConvert(arg.ntype(), "color"))?,
+        }
+    }
+
     ///Get the length of an array or string.
     fn @len(arg: any) -> int {
         match &arg {
@@ -162,116 +204,8 @@ generate_builtins! {
         }
     }
 
-    ///Create a color from RGBA values.
-    fn @rgba(r: u8, g: u8, b: u8, a: u8) -> color {
-        Value::Color([r, g, b, a])
-    }
-
-    ///Create a color from RGB values.
-    fn @rgb(r: u8, g: u8, b: u8) -> color {
-        Value::Color([r, g, b, 255])
-    }
-
-    ///Create a color from HSLA values.
-    fn @hsla(h: double, s: double, l: double, a: double) -> color {
-        Value::Color(hsla_to_rgba(h, s, l, a))
-    }
-
-    ///Create a color from HSL values.
-    fn @hsl(h: double, s: double, l: double) -> color {
-        Value::Color(hsla_to_rgba(h, s, l, 1.0))
-    }
-
-    ///Create a color from HSVA values.
-    fn @hsva(h: double, s: double, v: double, a: double) -> color {
-        Value::Color(hsva_to_rgba(h, s, v, a))
-    }
-
-    ///Create a color from HSV values.
-    fn @hsv(h: double, s: double, v: double) -> color {
-        Value::Color(hsva_to_rgba(h, s, v, 1.0))
-    }
-
     ///Get the type of a value as a string.
     fn @gettype(arg: any) -> str {
         arg.ntype().into()
     }
-
-    ///Get the Red value of a color.
-    fn @r(c: color) -> int {
-        Value::Int(c[0] as i64)
-    }
-
-    ///Get the Green value of a color.
-    fn @g(c: color) -> int {
-        Value::Int(c[1] as i64)
-    }
-
-    ///Get the Blue value of a color.
-    fn @b(c: color) -> int {
-        Value::Int(c[2] as i64)
-    }
-
-    ///Get the Alpha value of a color.
-    fn @a(c: color) -> int {
-        Value::Int(c[3] as i64)
-    }
-}
-
-#[inline]
-fn hsla_to_rgba(h: f64, s: f64, l: f64, a: f64) -> [u8; 4] {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let h_ = h / 60.0;
-    let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
-
-    let (r, g, b) = if h_ < 1.0 {
-        (c, x, 0.0)
-    } else if h_ < 2.0 {
-        (x, c, 0.0)
-    } else if h_ < 3.0 {
-        (0.0, c, x)
-    } else if h_ < 4.0 {
-        (0.0, x, c)
-    } else if h_ < 5.0 {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    [
-        ((r + m).max(0.0).min(1.0) * 255.0).round() as u8,
-        ((g + m).max(0.0).min(1.0) * 255.0).round() as u8,
-        ((b + m).max(0.0).min(1.0) * 255.0).round() as u8,
-        (a * 255.0).round() as u8,
-    ]
-}
-
-#[inline]
-fn hsva_to_rgba(h: f64, s: f64, v: f64, a: f64) -> [u8; 4] {
-    let c = v * s;
-    let h_ = h / 60.0;
-    let x = c * (1.0 - (h_ % 2.0 - 1.0).abs());
-    let m = v - c;
-
-    let (r, g, b) = if h_ < 1.0 {
-        (c, x, 0.0)
-    } else if h_ < 2.0 {
-        (x, c, 0.0)
-    } else if h_ < 3.0 {
-        (0.0, c, x)
-    } else if h_ < 4.0 {
-        (0.0, x, c)
-    } else if h_ < 5.0 {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    [
-        ((r + m).max(0.0).min(1.0) * 255.0).round() as u8,
-        ((g + m).max(0.0).min(1.0) * 255.0).round() as u8,
-        ((b + m).max(0.0).min(1.0) * 255.0).round() as u8,
-        (a * 255.0).round() as u8,
-    ]
 }
