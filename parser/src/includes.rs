@@ -42,6 +42,8 @@ impl IncludeResolver for DefaultIncludeResolver {
 }
 
 pub trait Cache {
+    fn parse(&mut self, name: &str, src: &str) -> Result<AST, ErrorS>;
+
     fn parse_with_includes<R: IncludeResolver>(
         &mut self,
         name: &str,
@@ -57,6 +59,15 @@ pub trait Cache {
 }
 
 impl Cache for SourceCache {
+    fn parse(&mut self, name: &str, src: &str) -> Result<AST, ErrorS> {
+        let id = self.add(name.to_string(), src);
+
+        match parse_code(src, id) {
+            Ok(ast) => Ok(ast),
+            Err(e) => Err(e),
+        }
+    }
+
     fn parse_with_includes<R: IncludeResolver>(
         &mut self,
         name: &str,
