@@ -250,7 +250,7 @@ macro_rules! generate_builtins {
                             optional: false,
                             default: None,
                         },)*
-                        $(, Arg {
+                        $(Arg {
                             name: stringify!($oparg),
                             r#type: stringify!($optype),
                             optional: true,
