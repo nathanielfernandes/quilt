@@ -226,6 +226,10 @@ macro_rules! generate_builtins {
                         let $arg = args.$type()?;
                     )*
 
+                    $(
+                        let $oparg = args.optional(BuiltinArgsContainer::$optype)?$(.unwrap_or_else(|| $opdef))?;
+                    )*
+
                     args.stop()?;
                     Ok($start_body)
                 }
