@@ -27,9 +27,9 @@ pub mod prelude {
         structure::FunctionDisassembly, structure::Hint, structure::Line, Disassembler,
     };
 
-    pub mod builtins {
-        pub use interpreter::builtins::*;
-    }
+    // pub mod builtins {
+    pub use interpreter::builtins::*;
+    // }
 
     pub struct EZError {
         pub error: ErrorS,

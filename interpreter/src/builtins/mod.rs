@@ -115,6 +115,11 @@ pub trait Consumable {
     fn any(&mut self) -> Result<Value, Error>;
 
     fn special(&mut self, id: &'static str) -> Result<usize, Error>;
+
+    fn optional<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<R, Error>,
+    ) -> Result<Option<R>, Error>;
 }
 
 /// helper function to create a [`RuntimeError`] for when an unexpected value is encountered
@@ -124,6 +129,17 @@ pub fn expected(got: &'static str, expected: &'static str) -> Error {
 }
 
 impl<'a> Consumable for BuiltinArgsContainer<'a> {
+    fn optional<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<R, Error>,
+    ) -> Result<Option<R>, Error> {
+        if self.len() == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(f(self)?))
+        }
+    }
+
     fn consume(&mut self, expected: &str) -> Result<&'a Value, Error> {
         if let Some(value) = self.next() {
             Ok(value)

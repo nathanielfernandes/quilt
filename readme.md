@@ -202,6 +202,11 @@ generate_builtins! {
     fn @luma(c: color) -> float {
         Value::Float(c[0] as f64 * 0.2126 + c[1] as f64  * 0.7152 + c[2] as f64  * 0.0722)
     }
+
+     ///Truncate a string to a given length and add a custom ellipsis.
+    fn @truncate(s: str, len: int, ?ellipsis: str = String::from("...")) -> str {
+        ...
+    }
 }
 
 // custom mutable state

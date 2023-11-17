@@ -11,7 +11,7 @@ generate_builtins! {
     [export=strings]
 
     ///Truncate a string to a given length and add a custom ellipsis.
-    fn @truncate(s: str, len: int, ellipsis: str) -> str {
+    fn @truncate(s: str, len: int, ?ellipsis: str = String::from("...")) -> str {
         // factor in the length of the ellipsis
         let len = len as usize;
 
@@ -73,12 +73,12 @@ generate_builtins! {
 
     [options]
     ///Split a string into a list of strings at a given separator.
-    fn @split(s: str, sep: str) -> list {
+    fn @split(s: str, ?sep: str = String::from(" ")) -> list {
         make_value_array(s.split(&sep).map(|s| s.into()).collect::<Vec<Value>>(), options.array_max_size)?
     }
 
     ///Join a list of values into a single string with a given separator.
-    fn @join(s: list, sep: str) -> str {
+    fn @join(s: list, ?sep: str = String::from("")) -> str {
         s.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(&sep).into()
     }
 

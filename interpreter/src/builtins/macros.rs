@@ -5,17 +5,14 @@ macro_rules! generate_builtins {
         $(#[doc = $groupdoc:expr])*
         [export=$group:ident]
 
-
         $(
             $([$options:ident])?
             $(#[doc = $doc:expr])*
-            fn @$name:ident($($arg:ident: $type:ident),*) $(-> $($ret:ident),+)?  $body:block
+            fn @$name:ident($($arg:ident: $type:ident),*$(,)? $(?$oparg:ident: $optype:ident $(= $opdef:expr)?),*) $(-> $($ret:ident),+)?  $body:block
         )*
     } => {
             #[cfg(any(THIS))]
             use quilt::prelude::*;
-            #[cfg(any(THIS))]
-            use quilt::prelude::builtins::*;
 
             $(
                 $(#[doc = $doc])*
@@ -31,6 +28,10 @@ macro_rules! generate_builtins {
                         let $arg = args.$type()?;
                     )*
 
+                    $(
+                        let $oparg = args.optional(BuiltinArgsContainer::$optype)?$(.unwrap_or_else(|| $opdef))?;
+                    )*
+
                     args.stop()?;
                     Ok($body)
                 }
@@ -42,7 +43,21 @@ macro_rules! generate_builtins {
                     pub const [<$name _DOC>]: BuiltinDoc = BuiltinDoc {
                         name: stringify!($name),
                         description: concat!($($doc, '\n'), *),
-                        args: &[ $((stringify!($arg), stringify!($type)),)* ],
+                        args: &[ $(Arg {
+                            name: stringify!($arg),
+                            r#type: stringify!($type),
+                            optional: false,
+                            default: None,
+                        }),*
+                        $(, Arg {
+                            name: stringify!($oparg),
+                            r#type: stringify!($optype),
+                            optional: true,
+                            $(default: Some(stringify!($opdef)),)?
+
+                            ..DEFAULT_ARG
+                        },),*
+                        ],
                         returns: &[ $($(stringify!($ret),)*)? ],
                     };
                 }
@@ -93,11 +108,10 @@ macro_rules! generate_builtins {
         $(
             $([$options:ident])?
             $(#[doc = $doc:expr])*
-            fn @$name:ident($data:ident, $($arg:ident: $type:ident),*) $(-> $($ret:ident),+)?  $body:block
+            fn @$name:ident($data:ident, $($arg:ident: $type:ident),*$(,)? $(?$oparg:ident: $optype:ident $(= $opdef:expr)?),*) $(-> $($ret:ident),+)?  $body:block
         )*
     } => {
             use quilt::prelude::*;
-            use quilt::prelude::builtins::*;
 
             $(
                 $(#[doc = $doc])*
@@ -113,6 +127,10 @@ macro_rules! generate_builtins {
                         let $arg = args.$type()?;
                     )*
 
+                    $(
+                        let $oparg = args.optional(BuiltinArgsContainer::$optype)?$(.unwrap_or_else(|| $opdef))?;
+                    )*
+
                     args.stop()?;
                     Ok($body)
                 }
@@ -124,7 +142,21 @@ macro_rules! generate_builtins {
                     pub const [<$name _DOC>]: BuiltinDoc = BuiltinDoc {
                         name: stringify!($name),
                         description: concat!($($doc, '\n'), *),
-                        args: &[ $((stringify!($arg), stringify!($type)),)* ],
+                        args: &[ $(Arg {
+                            name: stringify!($arg),
+                            r#type: stringify!($type),
+                            optional: false,
+                            default: None,
+                        }),*
+                        $(, Arg {
+                            name: stringify!($oparg),
+                            r#type: stringify!($optype),
+                            optional: true,
+                            $(default: Some(stringify!($opdef)),)?
+
+                            ..DEFAULT_ARG
+                        },),*
+                        ],
                         returns: &[ $($(stringify!($ret),)*)? ],
                     };
                 }
@@ -166,7 +198,6 @@ macro_rules! generate_builtins {
     };
 
 
-
     {
         $(#[doc = $groupdoc:expr])*
         [data=$datatype:ty]
@@ -174,13 +205,12 @@ macro_rules! generate_builtins {
         $(
             $([$options:ident])?
             $(#[doc = $doc:expr])*
-            fn @$name:ident($data:ident, $($arg:ident: $type:ident),*) $(-> $($ret:ident),+)?
+            fn @$name:ident($data:ident, $($arg:ident: $type:ident),*$(,)? $(?$oparg:ident: $optype:ident $(= $opdef:expr)?),*) $(-> $($ret:ident),+)?
 
             $start_body:block => $end_body:block
         )*
     } => {
             use quilt::prelude::*;
-            use quilt::prelude::builtins::*;
 
             $(
                 $(#[doc = $doc])*
@@ -214,11 +244,26 @@ macro_rules! generate_builtins {
                     pub const [<$name _DOC>]: BuiltinDoc = BuiltinDoc {
                         name: stringify!($name),
                         description: concat!($($doc, '\n'), *),
-                        args: &[ $((stringify!($arg), stringify!($type)),)* ],
+                        args: &[ $(Arg {
+                            name: stringify!($arg),
+                            r#type: stringify!($type),
+                            optional: false,
+                            default: None,
+                        }),*
+                        $(, Arg {
+                            name: stringify!($oparg),
+                            r#type: stringify!($optype),
+                            optional: true,
+                            $(default: Some(stringify!($opdef)),)?
+
+                            ..DEFAULT_ARG
+                        },),*
+                        ],
                         returns: &[ $($(stringify!($ret),)*)? ],
                     };
                 }
             )*
+
 
             paste! {
                 #[allow(non_upper_case_globals, unused_variables)]
