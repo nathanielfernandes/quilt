@@ -48,15 +48,15 @@ macro_rules! generate_builtins {
                             r#type: stringify!($type),
                             optional: false,
                             default: None,
-                        }),*
-                        $(, Arg {
+                        },)*
+                        $(Arg {
                             name: stringify!($oparg),
                             r#type: stringify!($optype),
                             optional: true,
                             $(default: Some(stringify!($opdef)),)?
 
                             ..DEFAULT_ARG
-                        },),*
+                        }),*
                         ],
                         returns: &[ $($(stringify!($ret),)*)? ],
                     };
@@ -147,15 +147,15 @@ macro_rules! generate_builtins {
                             r#type: stringify!($type),
                             optional: false,
                             default: None,
-                        }),*
-                        $(, Arg {
+                        },)*
+                        $(Arg {
                             name: stringify!($oparg),
                             r#type: stringify!($optype),
                             optional: true,
                             $(default: Some(stringify!($opdef)),)?
 
                             ..DEFAULT_ARG
-                        },),*
+                        }),*
                         ],
                         returns: &[ $($(stringify!($ret),)*)? ],
                     };
@@ -249,7 +249,7 @@ macro_rules! generate_builtins {
                             r#type: stringify!($type),
                             optional: false,
                             default: None,
-                        }),*
+                        },)*
                         $(, Arg {
                             name: stringify!($oparg),
                             r#type: stringify!($optype),
@@ -257,7 +257,7 @@ macro_rules! generate_builtins {
                             $(default: Some(stringify!($opdef)),)?
 
                             ..DEFAULT_ARG
-                        },),*
+                        }),*
                         ],
                         returns: &[ $($(stringify!($ret),)*)? ],
                     };
