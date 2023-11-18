@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use quilt::prelude::{builtins::BuiltinAdderFn, *};
+use quilt::prelude::{BuiltinAdderFn, *};
 
 pub struct Repl<const N: usize, Data = ()>
 where
