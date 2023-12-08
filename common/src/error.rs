@@ -144,19 +144,41 @@ impl ErrorExt for TraceBack {
         Ok(())
     }
 
-    fn to_string(self, cache: &SourceCache) -> Result<String, std::io::Error> {
-        let mut buf = vec![];
-        let cursor = Cursor::new(&mut buf);
-        self.report().write(cache, cursor)?;
+    fn to_string(self, sources: &SourceCache) -> Result<String, std::io::Error> {
+        let mut string = String::from("Traceback (most recent call last):\n");
+        // iterate over the first 10 frames
+        for (fn_name, span) in self.iter().rev() {
+            if fn_name.starts_with("...") {
+                string.push_str(&format!("   {}\n", fn_name));
+                continue;
+            }
 
-        if let Ok(s) = String::from_utf8(buf) {
-            Ok(s)
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Could not convert to string",
-            ))
+            let Some(src) = sources.get(span.2) else {
+                continue;
+            };
+
+            if src.source.len() == 0 {
+                continue;
+            }
+
+            let Some(lineno) = src.source.get_offset_line(span.0).map(|(_, l, _)| l) else {
+                continue;
+            };
+
+            let Some(line) = src.source.line(lineno) else {
+                continue;
+            };
+
+            let line = line.chars().collect::<String>();
+
+            string.push_str(&format!(
+                "   File \"{}\", line {}, in {}\n",
+                src.name, lineno, fn_name
+            ));
+            string.push_str(&format!("      {}\n", line.trim_start()));
         }
+
+        Ok(string)
     }
 }
 
