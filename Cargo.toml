@@ -8,7 +8,7 @@ edition = "2021"
 name = "quilt"
 
 [features]
-default = ["disassembler", "qstd", "serde_docs", "arc"]
+default = ["disassembler", "qstd", "serde_docs"]
 serde_docs = ["interpreter/serde_docs"]
 arc = ["common/arc"]
 
