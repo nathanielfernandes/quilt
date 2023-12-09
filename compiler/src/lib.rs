@@ -1,11 +1,10 @@
-use std::rc::Rc;
-
 use bytecode::{bytecode::*, chunk::Chunk};
 use common::{
     error::*,
     pool::Pool,
     span::{Span, Spanned},
     vecc::Vecc,
+    Rc,
 };
 use interpreter::{
     value::{Function, Value},

@@ -1,7 +1,7 @@
-use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc};
+use std::collections::hash_map::Entry;
 
 use bytecode::bytecode::*;
-use common::{error::*, pool::Pool, span::Span, vecc::Vecc};
+use common::{error::*, pool::Pool, span::Span, vecc::Vecc, Rc, RefCell};
 use fxhash::FxHashMap;
 
 use crate::{
@@ -274,7 +274,6 @@ where
 
                 Return => {
                     let result = self.pop()?.clone();
-                    self.close_upvalues(self.frame.st);
 
                     for idx in self.frame.st..self.sp {
                         self.close_upvalues(idx);
@@ -1057,7 +1056,12 @@ where
         let value = &self.stack[last];
         for upvalue in self.open_upvalues.iter() {
             if upvalue.borrow().is_open_at(last) {
-                upvalue.replace(Upvalue::Closed(value.clone()));
+                // upvalue.replace(Upvalue::Closed(value.clone()));
+                // > pub fn replace(&self, t: T) -> T { mem::replace(&mut *self.borrow_mut(), t) }
+
+                // manually replace
+                let mut upvalue = upvalue.borrow_mut();
+                *upvalue = Upvalue::Closed(value.clone());
             }
         }
 

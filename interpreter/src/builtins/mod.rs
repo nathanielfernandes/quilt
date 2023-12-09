@@ -11,7 +11,9 @@ use crate::{value::Value, vm};
 pub use paste::paste;
 
 pub trait VmData {
+    #[inline(always)]
     fn on_enter_function(&mut self) {}
+    #[inline(always)]
     fn on_exit_function(&mut self) {}
 }
 

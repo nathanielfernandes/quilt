@@ -1,8 +1,6 @@
 use std::{
-    cell::RefCell,
     hash::{Hash, Hasher},
     ops::Range,
-    rc::Rc,
 };
 
 use bytecode::chunk::Chunk;
@@ -10,6 +8,7 @@ use common::{
     error::Error,
     span::{Span, Spanned},
     vecc::{GetSize, Vecc},
+    Rc, RefCell,
 };
 
 // max single value size is 256kb
@@ -138,6 +137,14 @@ impl Value {
             Value::Closure(_) => "closure",
             Value::LoopCtx(_) => "loop_ctx",
             // Value::Error(_) => "error",
+        }
+    }
+
+    #[inline]
+    pub fn special(&self) -> Option<(&'static str, usize)> {
+        match self {
+            Value::Special(s) => Some((s.0, s.1)),
+            _ => None,
         }
     }
 }

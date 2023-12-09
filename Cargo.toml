@@ -8,8 +8,9 @@ edition = "2021"
 name = "quilt"
 
 [features]
-default = ["disassembler", "qstd", "serde_docs"]
+default = ["disassembler", "qstd", "serde_docs", "arc"]
 serde_docs = ["interpreter/serde_docs"]
+arc = ["common/arc"]
 
 [dependencies]
 common = { path = "./common" }

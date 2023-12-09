@@ -1,5 +1,7 @@
-use crate::error::{Error, OverflowError};
-use std::rc::Rc;
+use crate::{
+    error::{Error, OverflowError},
+    Rc,
+};
 
 pub trait GetSize {
     fn get_size(&self) -> usize {
