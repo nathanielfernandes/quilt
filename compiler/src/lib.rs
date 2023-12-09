@@ -235,6 +235,9 @@ impl Compiler {
     }
 
     pub fn reset_state(&mut self, name: String) {
+        let symbol_pool = std::mem::replace(&mut self.level.symbol_pool, Pool::new());
+        let constant_pool = std::mem::replace(&mut self.level.constant_pool, Pool::new());
+
         self.level = Level {
             function: Function {
                 name: (name, Span::default()),
@@ -246,11 +249,10 @@ impl Compiler {
             upvalues: Vec::new(),
             enclosing: None,
             scope_depth: 0, // 0 is global scope
-            symbol_pool: Pool::new(),
-            constant_pool: Pool::<Value, u16>::new(),
+            symbol_pool,
+            constant_pool,
         };
     }
-
     pub fn set_main_span(&mut self, ast: &Vec<Spanned<Node>>) {
         if let Some((_, span)) = ast.first() {
             self.level.function.name.1 = *span;
