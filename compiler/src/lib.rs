@@ -235,8 +235,8 @@ impl Compiler {
     }
 
     pub fn reset_state(&mut self, name: String) {
-        let symbol_pool = std::mem::replace(&mut self.level.symbol_pool, Pool::new());
-        let constant_pool = std::mem::replace(&mut self.level.constant_pool, Pool::new());
+        let symbol_pool = std::mem::take(&mut self.level.symbol_pool);
+        let constant_pool = std::mem::take(&mut self.level.constant_pool);
 
         self.level = Level {
             function: Function {
