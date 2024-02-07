@@ -51,4 +51,12 @@ generate_builtins! {
             Err(error("could not flush stdout".to_string()))?
         }
     }
+
+    ///Read a file to a string.
+    fn @readfile(path: str) -> str {
+        match std::fs::read_to_string(path) {
+            Ok(contents) => contents.into(),
+            Err(e) => Err(error(format!("could not read file: {}", e)))?,
+        }
+    }
 }
