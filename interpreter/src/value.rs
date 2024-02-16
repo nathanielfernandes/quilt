@@ -221,7 +221,7 @@ impl Hash for Function {
 #[derive(Debug, Clone)]
 pub struct Closure {
     pub function: Rc<Function>,
-    pub upvalues: Rc<Vec<Rc<RefCell<Upvalue>>>>,
+    pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
 }
 
 impl PartialEq for Closure {

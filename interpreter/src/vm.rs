@@ -109,10 +109,10 @@ where
             frames: Vec::with_capacity(options.call_stack_size),
             frame: {
                 CallFrame {
-                    closure: Closure {
+                    closure: Rc::new(Closure {
                         function: Rc::new(script.function),
-                        upvalues: Rc::new(Vec::new()),
-                    },
+                        upvalues: Vec::new(),
+                    }),
                     ip: 0,
                     st: 0,
                 }
@@ -140,12 +140,12 @@ where
         self.exit_fn_stack.clear();
     }
 
-    pub fn update_script(&mut self, script: Script) {
-        self.reset_state();
+    // pub fn update_script(&mut self, script: Script) {
+    //     self.reset_state();
 
-        self.frame.closure.function = Rc::new(script.function);
-        self.global_symbols = script.global_symbols;
-    }
+    //     self.frame.closure.function = Rc::new(script.function);
+    //     self.global_symbols = script.global_symbols;
+    // }
 
     pub fn new_with(
         data: Data,
@@ -273,7 +273,7 @@ where
                 }
 
                 Return => {
-                    let result = self.pop()?.clone();
+                    let result = self.pop().clone();
 
                     for idx in self.frame.st..self.sp {
                         self.close_upvalues(idx);
@@ -303,7 +303,7 @@ where
                 }
 
                 BlockResult => {
-                    let result = self.pop()?.clone();
+                    let result = self.pop_swap_out();
                     self.block_results.push(result);
                 }
 
@@ -316,22 +316,22 @@ where
                 }
 
                 Pop => {
-                    self.pop()?;
+                    self.pop();
                 }
 
                 Swap => {
                     // swaps the top 2 values on the stack
-                    self.swap()?;
+                    self.swap();
                 }
 
                 SwapPop => {
-                    self.swap()?;
-                    self.pop()?;
+                    self.swap();
+                    self.pop();
                 }
 
                 PopMany => {
                     let count = self.read_u16() as usize;
-                    self.pop_many(count)?;
+                    self.pop_many(count);
                 }
 
                 LoadConst => {
@@ -348,7 +348,7 @@ where
 
                 SetLocal => {
                     let idx = self.read_u16() as usize;
-                    let value = self.peek(0)?;
+                    let value = self.peek();
 
                     self.stack[self.frame.st + idx] = value.clone();
                 }
@@ -375,14 +375,14 @@ where
                     // let name = self.read_symbol().to_string();
                     let name = self.read_u16();
 
-                    let value = self.pop()?.clone();
+                    let value = self.pop().clone();
                     self.globals.insert(name, value);
                 }
 
                 SetGlobal => {
                     // let name = self.read_symbol().to_string();
                     let name = self.read_u16();
-                    let value = self.peek(0)?.clone();
+                    let value = self.peek().clone();
 
                     match self.globals.entry(name) {
                         Entry::Occupied(mut entry) => {
@@ -411,7 +411,7 @@ where
 
                 SetUpvalue => {
                     let idx = self.read_u16() as usize;
-                    let value = self.peek(0)?.clone();
+                    let value = self.peek().clone();
                     let upvalue = &self.frame.closure.upvalues[idx];
                     {
                         upvalue.borrow_mut().set(&mut self.stack, value);
@@ -428,8 +428,8 @@ where
                 }
 
                 IndexGet => {
-                    let value = self.pop()?.clone();
-                    let index = self.pop()?.clone();
+                    let value = self.pop().clone();
+                    let index = self.pop().clone();
 
                     let idx = match index {
                         Value::Int(n) => n,
@@ -479,9 +479,9 @@ where
                 }
 
                 // IndexSet => {
-                //     let target = self.pop()?.clone();
-                //     let index = self.pop()?.clone();
-                //     let value = self.peek(0)?.clone();
+                //     let target = self.pop().clone();
+                //     let index = self.pop().clone();
+                //     let value = self.peek()?.clone();
 
                 //     let idx = match index {
                 //         Value::Int(n) => n,
@@ -509,13 +509,15 @@ where
                 // }
                 CloseUpvalue => {
                     self.close_upvalues(self.sp - 1);
-                    self.pop()?;
+                    self.pop();
                 }
 
                 CreatePair => {
-                    let b = self.pop()?.clone();
-                    let a = self.pop()?.clone();
-                    self.push(Value::Pair(Rc::new((a, b))))?;
+                    // std::mem::take(dest)
+
+                    let b = self.pop().clone();
+                    let a = self.pop().clone();
+                    unsafe { self.push_unchecked(Value::Pair(Rc::new((a, b)))) };
                 }
 
                 CreateArray => {
@@ -524,7 +526,7 @@ where
 
                     for _ in 0..argc {
                         array
-                            .push(self.pop()?.clone())
+                            .push(self.pop().clone())
                             .map_err(|e| self.error_1(e.into()))?;
                     }
 
@@ -534,8 +536,8 @@ where
                 }
 
                 CreateRange => {
-                    let b = self.pop()?.clone();
-                    let a = self.pop()?.clone();
+                    let b = self.pop().clone();
+                    let a = self.pop().clone();
 
                     match (a, b) {
                         (Value::Int(a), Value::Int(b)) => {
@@ -556,7 +558,7 @@ where
 
                 Unpack => {
                     let argc = self.read_u8();
-                    let value = self.pop_swap_out()?;
+                    let value = self.pop_swap_out();
                     match (&value, argc) {
                         (Value::Pair(pair), 2) => {
                             let (a, b) = (**pair).clone();
@@ -592,10 +594,10 @@ where
 
                     let closure = Closure {
                         function,
-                        upvalues: Rc::new(Vec::new()),
+                        upvalues: Vec::new(),
                     };
 
-                    self.push(Value::Closure(closure.into()))?;
+                    self.push(Value::Closure(Rc::new(closure)))?;
                 }
 
                 CreateClosure => {
@@ -620,10 +622,7 @@ where
                         upvalues.push(upvalue);
                     }
 
-                    let closure = Closure {
-                        function,
-                        upvalues: Rc::new(upvalues),
-                    };
+                    let closure = Closure { function, upvalues };
                     self.push(Value::Closure(Rc::new(closure)))?;
                 }
 
@@ -713,7 +712,7 @@ where
 
                 CallFunction => {
                     let argc = self.read_u8();
-                    let value = self.peek(argc as usize)?;
+                    let value = self.peekn(argc as usize);
 
                     if self.frames.len() >= self.options.call_stack_size {
                         return Err(self.error(OverflowError::StackOverflow.into()));
@@ -737,11 +736,11 @@ where
                     }
 
                     let closure = match value {
-                        Value::Closure(closure) => (**closure).clone(),
-                        Value::Function(function) => Closure {
+                        Value::Closure(closure) => closure.clone(),
+                        Value::Function(function) => Rc::new(Closure {
                             function: function.clone(),
-                            upvalues: Rc::new(Vec::new()),
-                        },
+                            upvalues: Vec::new(),
+                        }),
                         _ => Err(self.error_1(TypeError::NotCallable(value.ntype()).into()))?,
                     };
 
@@ -767,7 +766,7 @@ where
 
                 JumpIfFalse => {
                     let offset = self.read_u16() as usize;
-                    let value = self.peek(0)?;
+                    let value = self.peek();
 
                     if !value.is_truthy().map_err(|e| self.error_1(e))? {
                         self.frame.ip += offset;
@@ -776,7 +775,7 @@ where
 
                 JumpIfNotEq => {
                     let offset = self.read_u16() as usize;
-                    let (value, case) = self.pop_peek(0)?;
+                    let (value, case) = self.pop_peek(0);
                     // println!("jump if not eq: {} != {}", value, case);
                     if value != case {
                         self.frame.ip += offset;
@@ -852,167 +851,186 @@ where
                 }
 
                 UnaryNegate => {
-                    let value = self.pop()?.negate().map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+                    let value = self.pop().negate().map_err(|e| self.error_1(e))?;
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 UnaryNot => {
-                    let value = self.pop()?.not().map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+                    let value = self.pop().not().map_err(|e| self.error_1(e))?;
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 // UnarySpread => {
-                //     let value = self.pop()?.spread().map_err(|e| self.error_1(e))?;
+                //     let value = self.pop().spread().map_err(|e| self.error_1(e))?;
                 //     self.push(value)?;
                 // }
                 BinaryAdd => {
                     let sms = self.options.string_max_size;
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
                     let value = lhs.add(rhs, sms).map_err(|e| self.error_1(e))?;
 
-                    self.push(value)?;
+                    // we can do an unsafe push here because we know that
+                    // the stack has enough space for the value
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinarySubtract => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
                     let value = lhs.subtract(rhs).map_err(|e| self.error_1(e))?;
 
-                    self.push(value)?;
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryMultiply => {
                     let sms = self.options.string_max_size;
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
                     let value = lhs.multiply(&rhs, sms).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryDivide => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.divide(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryModulo => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.modulo(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryPower => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.power(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryEqual => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
                     let value = lhs.equal(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryNotEqual => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.not_equal(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryLess => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.less_than(rhs).map_err(|e| self.error_1(e))?;
 
-                    self.push(value)?;
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryLessEqual => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.less_than_or_equal(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryGreater => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.greater_than(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryGreaterEqual => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs
                         .greater_than_or_equal(rhs)
                         .map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryAnd => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.and(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryOr => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.or(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BinaryJoin => {
                     let sms = self.options.string_max_size;
                     let ams = self.options.array_max_size;
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.join(rhs, sms, ams).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BitwiseAnd => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.bitwise_and(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BitwiseOr => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.bitwise_or(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BitwiseXor => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.bitwise_xor(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BitwiseLeftShift => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.bitwise_shift_left(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BitwiseRightShift => {
-                    let (lhs, rhs) = self.pop_double_ref()?;
+                    let (lhs, rhs) = self.pop_double_ref();
 
                     let value = lhs.bitwise_shift_right(rhs).map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 BitwiseNot => {
-                    let value = self.pop()?.bitwise_not().map_err(|e| self.error_1(e))?;
-                    self.push(value)?;
+                    let value = self.pop().bitwise_not().map_err(|e| self.error_1(e))?;
+                    unsafe { self.push_unchecked(value) };
                 }
 
                 op => {
@@ -1047,6 +1065,7 @@ where
         upvalue
     }
 
+    //TODO refactor to be done in a single pass
     #[inline]
     fn close_upvalues(&mut self, last: usize) {
         if last >= self.stack.len() {
@@ -1111,79 +1130,98 @@ where
     }
 
     #[inline]
+    unsafe fn push_unchecked(&mut self, value: Value) {
+        self.stack[self.sp] = value;
+        self.sp += 1;
+    }
+
+    #[inline]
     fn push_many(&mut self, n: usize) -> Result<(), ErrorS> {
-        if self.sp + n >= self.options.stack_size {
+        self.sp += n;
+
+        if self.sp >= self.options.stack_size {
             return Err(self.error_1(OverflowError::StackOverflow.into()));
         }
-
-        self.sp += n;
 
         Ok(())
     }
 
     #[inline]
-    fn pop(&mut self) -> Result<&Value, ErrorS> {
-        if self.sp == 0 {
-            return Err(self.error_1(OverflowError::StackUnderflow.into()));
-        }
+    fn pop(&mut self) -> &Value {
+        debug_assert_ne!(self.sp, 0, "stack underflow");
+        // if self.sp == 0 {
+        //     return Err(self.error_1(OverflowError::StackUnderflow.into()));
+        // }
+
         self.sp -= 1;
 
         // let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
         // let popped = self.stack[self.sp].clone();
         // print!("<- {}\n", self.stack[self.sp].display());
-        Ok(&self.stack[self.sp])
+        &self.stack[self.sp]
     }
 
     #[inline]
-    fn pop_many(&mut self, n: usize) -> Result<(), ErrorS> {
-        if self.sp < n {
-            return Err(self.error_1(OverflowError::StackUnderflow.into()));
-        }
+    fn pop_many(&mut self, n: usize) {
+        debug_assert!(self.sp >= n, "stack underflow");
+
+        // if self.sp < n {
+        //     return Err(self.error_1(OverflowError::StackUnderflow.into()));
+        // }
         self.sp -= n;
 
-        Ok(())
+        // Ok(())
     }
 
     #[inline]
-    pub fn pop_swap_out(&mut self) -> Result<Value, ErrorS> {
-        if self.sp == 0 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
+    pub fn pop_swap_out(&mut self) -> Value {
+        debug_assert_ne!(self.sp, 0, "stack underflow");
+        // if self.sp == 0 {
+        //     return Err(self.error(OverflowError::StackUnderflow.into()));
+        // }
         self.sp -= 1;
 
-        let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
-        // let popped = self.stack[self.sp].clone();
+        // let popped = std::mem::replace(&mut self.stack[self.sp], Value::None);
+        // popped
 
-        Ok(popped)
+        std::mem::replace(&mut self.stack[self.sp], Value::None)
     }
 
     #[inline]
-    fn pop_double_ref(&mut self) -> Result<(&Value, &Value), ErrorS> {
-        if self.sp < 2 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
+    fn pop_double_ref(&mut self) -> (&Value, &Value) {
+        debug_assert!(self.sp >= 2, "stack underflow");
+        // if self.sp < 2 {
+        //     return Err(self.error(OverflowError::StackUnderflow.into()));
+        // }
         self.sp -= 2;
 
-        Ok((&self.stack[self.sp], &self.stack[self.sp + 1]))
+        (&self.stack[self.sp], &self.stack[self.sp + 1])
     }
 
     #[inline]
-    fn peek(&self, distance: usize) -> Result<&Value, ErrorS> {
-        if self.sp < distance + 1 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
+    fn peekn(&self, distance: usize) -> &Value {
+        debug_assert!(self.sp >= distance + 1, "stack underflow");
+        // if self.sp < distance + 1 {
+        //     return Err(self.error(OverflowError::StackUnderflow.into()));
+        // }
 
-        Ok(&self.stack[self.sp - distance - 1])
+        &self.stack[self.sp - distance - 1]
     }
 
     #[inline]
-    fn pop_peek(&mut self, distance: usize) -> Result<(&Value, &Value), ErrorS> {
-        if self.sp < distance + 2 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
+    fn peek(&self) -> &Value {
+        &self.stack[self.sp - 1]
+    }
+
+    #[inline]
+    fn pop_peek(&mut self, distance: usize) -> (&Value, &Value) {
+        debug_assert!(self.sp >= distance + 2, "stack underflow");
+        // if self.sp < distance + 2 {
+        //     return Err(self.error(OverflowError::StackUnderflow.into()));
+        // }
         self.sp -= 1;
 
-        Ok((&self.stack[self.sp - distance - 1], &self.stack[self.sp]))
+        (&self.stack[self.sp - distance - 1], &self.stack[self.sp])
     }
 
     // #[inline]
@@ -1196,14 +1234,14 @@ where
     // }
 
     #[inline]
-    fn swap(&mut self) -> Result<(), ErrorS> {
-        if self.sp < 2 {
-            return Err(self.error(OverflowError::StackUnderflow.into()));
-        }
+    fn swap(&mut self) {
+        // if self.sp < 2 {
+        //     return Err(self.error(OverflowError::StackUnderflow.into()));
+        // }
 
         self.stack.swap(self.sp - 1, self.sp - 2);
 
-        Ok(())
+        // Ok(())
     }
 
     #[inline]
@@ -1239,7 +1277,7 @@ where
 }
 
 struct CallFrame {
-    pub closure: Closure,
+    pub closure: Rc<Closure>,
     pub ip: usize,
     pub st: usize,
 }
