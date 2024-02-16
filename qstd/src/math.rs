@@ -132,6 +132,11 @@ generate_builtins! {
         Value::Float(a.clamp(m, mm))
     }
 
+    ///Linearly interpolate between two numbers.
+    fn @interp(a: num, b: num, t: num) -> float {
+        Value::Float(a + (b - a) * t)
+    }
+
     ///Get the absolute value of a number.
     fn @abs(a: any) -> num {
         match a {
