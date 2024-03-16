@@ -580,6 +580,23 @@ where
                                 self.push(list[i as usize].clone())?;
                             }
                         }
+                        (Value::Color(color), _) => {
+                            // let len = color.len();
+                            // if len != argc as usize {
+                            //     return Err(
+                            //         self.error_1(TypeError::InsufficientValues(len, argc).into())
+                            //     );
+                            // }
+                            if argc < 1 {
+                                return Err(
+                                    self.error_1(TypeError::InsufficientValues(4, argc).into())
+                                );
+                            }
+
+                            for i in (0..argc).rev() {
+                                self.push(Value::Int(color[i as usize] as i64))?;
+                            }
+                        }
                         _ => return Err(self.error_1(TypeError::Unpackable(value.ntype()).into())),
                     };
                 }

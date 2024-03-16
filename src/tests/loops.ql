@@ -4,13 +4,13 @@ fn fizzbuzz(n) {
         let buzz = i % 5 == 0
 
         if fizz && buzz {
-            @print("fizzbuzz")
+            @println("fizzbuzz")
         } else if fizz {
-            @print("fizz")
+            @println("fizz")
         } else if buzz {
-            @print("buzz")
+            @println("buzz")
         } else {
-            @print(i)
+            @println(i)
         }
     }
 }
@@ -36,3 +36,23 @@ while (i = i + 1) < 20 {
 for a, b, c in [[1, 2, 3], [4, 5, 6], [7, 8, 9]] {
     @print(a, b, c)
 }
+
+
+let r, g, b, a = @rgba(1, 2, 3, 4)
+
+@assert_eq(r, 1)
+@assert_eq(g, 2)
+@assert_eq(b, 3)
+@assert_eq(a, 4)
+
+
+let r, g, b = @rgba(1, 2, 3, 4)
+
+@assert_eq(r, 1)
+@assert_eq(g, 2)
+@assert_eq(b, 3)
+
+
+let r, = @rgba(1, 2, 3, 4)
+
+@assert_eq(r, 1)

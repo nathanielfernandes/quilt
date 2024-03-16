@@ -95,6 +95,11 @@ generate_builtins! {
         Value::Color([255 - c[0], 255 - c[1], 255 - c[2], c[3]])
     }
 
+    fn @alpha(c: color, a: double) -> color {
+        let a = (a * 255.0).round() as u8;
+        Value::Color([c[0], c[1], c[2], a])
+    }
+
     ///Mix two colors.
     fn @mix(c1: color, c2: color, t: double) -> color {
         let t = t.max(0.0).min(1.0);
