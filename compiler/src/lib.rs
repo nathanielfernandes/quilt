@@ -12,7 +12,7 @@ use interpreter::{
 };
 use parser::{
     literal::Literal,
-    node::{Node, Op},
+    node::{Node, Op, Var},
 };
 
 pub struct Compiler {
@@ -368,39 +368,62 @@ impl Compiler {
                 }
             }
 
-            Node::Declaration((name, span), value) => {
+            Node::Declaration(var, value) => {
                 self.compile_expr(&value)?;
-                if self.is_global() {
-                    let offset = self.add_global_symbol(name.to_string());
-                    self.write_op_u16(DefineGlobal, offset, *span);
-                } else {
-                    self.define_local(&name, true);
-                    self.set_variable(&name, *span);
+
+                match var {
+                    Var::Declaration((name, span)) => {
+                        if self.is_global() {
+                            let offset = self.add_global_symbol(name.to_string());
+                            self.write_op_u16(DefineGlobal, offset, *span);
+                        } else {
+                            self.define_local(&name, true);
+                            self.set_variable(&name, *span);
+                        }
+                    }
+                    Var::MultiDeclaration(names) => {
+                        let arity: u8 = names
+                            .len()
+                            .try_into()
+                            .map_err(|_| (OverflowError::TooMuchToUnpack.into(), span))?;
+
+                        self.write_op_u8(Unpack, arity, span);
+
+                        if self.is_global() {
+                            for (name, span) in names.iter() {
+                                let offset = self.add_global_symbol(name.to_string());
+                                self.write_op_u16(DefineGlobal, offset, *span);
+                            }
+                        } else {
+                            for (name, _) in names.iter().rev() {
+                                self.define_local(&name, true);
+                            }
+                        }
+                    }
                 }
             }
 
-            Node::MultiDeclaration(names, value) => {
-                self.compile_expr(&value)?;
+            // Node::MultiDeclaration(names, value) => {
+            //     self.compile_expr(&value)?;
 
-                let arity: u8 = names
-                    .len()
-                    .try_into()
-                    .map_err(|_| (OverflowError::TooMuchToUnpack.into(), span))?;
+            //     let arity: u8 = names
+            //         .len()
+            //         .try_into()
+            //         .map_err(|_| (OverflowError::TooMuchToUnpack.into(), span))?;
 
-                self.write_op_u8(Unpack, arity, span);
+            //     self.write_op_u8(Unpack, arity, span);
 
-                if self.is_global() {
-                    for (name, span) in names.iter() {
-                        let offset = self.add_global_symbol(name.to_string());
-                        self.write_op_u16(DefineGlobal, offset, *span);
-                    }
-                } else {
-                    for (name, _) in names.iter().rev() {
-                        self.define_local(&name, true);
-                    }
-                }
-            }
-
+            //     if self.is_global() {
+            //         for (name, span) in names.iter() {
+            //             let offset = self.add_global_symbol(name.to_string());
+            //             self.write_op_u16(DefineGlobal, offset, *span);
+            //         }
+            //     } else {
+            //         for (name, _) in names.iter().rev() {
+            //             self.define_local(&name, true);
+            //         }
+            //     }
+            // }
             Node::Include((name, span), body) => {
                 if self.level.scope_depth > 0 {
                     return Err((IncludeError::IncludeNotTopLevel.into(), *span));
@@ -534,7 +557,7 @@ impl Compiler {
             Node::ContextWrapped {
                 name: (name, c_span),
                 args,
-                variable: varname,
+                variable: var,
                 body,
             } => {
                 let arity: u8 = args
@@ -556,9 +579,31 @@ impl Compiler {
 
                 // if there is an 'as varname' part, define the variable
                 // if not just pop if off
-                if let Some((varname, span)) = varname {
-                    self.define_local(varname, true);
-                    self.set_variable(varname, *span);
+                // if let Some((varname, span)) = varname {
+                //     self.define_local(varname, true);
+                //     self.set_variable(varname, *span);
+                // } else {
+                //     self.write_op(Pop, *span)
+                // }
+                if let Some(var) = var {
+                    match var {
+                        Var::Declaration((varname, span)) => {
+                            self.define_local(varname, true);
+                            self.set_variable(varname, *span);
+                        }
+                        Var::MultiDeclaration(names) => {
+                            let arity: u8 = names
+                                .len()
+                                .try_into()
+                                .map_err(|_| (OverflowError::TooMuchToUnpack.into(), *c_span))?;
+
+                            self.write_op_u8(Unpack, arity, *span);
+
+                            for (name, _) in names.iter().rev() {
+                                self.define_local(name, true);
+                            }
+                        }
+                    }
                 } else {
                     self.write_op(Pop, *span)
                 }

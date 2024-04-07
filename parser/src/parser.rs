@@ -2,7 +2,7 @@ use common::span::{Span, Spanned};
 
 use crate::{
     literal::Literal,
-    node::{Node, Op},
+    node::{Node, Op, Var},
 };
 
 peg::parser!(
@@ -150,12 +150,12 @@ peg::parser!(
                     let symbol = (Node::Identifier(i.0.clone()), i.1);
                     let span = n.1;
                     let op = (Node::Binary(op, Box::new(symbol), Box::new(n)), span);
-                    Node::Declaration(i, Box::new(op))
+                    Node::Declaration(Var::Declaration(i), Box::new(op))
                 } else {
-                    Node::Declaration(i, Box::new(n))
+                    Node::Declaration(Var::Declaration(i), Box::new(n))
                 }
             }
-            KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::MultiDeclaration(i, Box::new(e)) }
+            KW("let") _  i:COMMASEPP(<spanned(<IDENT()>)>)  _ "=" _ e:@  { Node::Declaration(Var::MultiDeclaration(i), Box::new(e)) }
             i:spanned(<IDENT()>) _  op:op()? "=" _ e:@  {
                 if let Some(op) = op {
                     let symbol = (Node::Identifier(i.0.clone()), i.1);
@@ -214,7 +214,7 @@ peg::parser!(
             }
             --
             KW("with") _ name:("@" _ name:spanned(<IDENT()>) {name} / expected!("builtin") ) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block(false) {
-                Node::ContextWrapped { name, args, variable, body }
+                Node::ContextWrapped { name, args, variable: variable.map(|v| Var::Declaration(v)), body }
             }
             --
             KW("include") _ s:spanned(<STRING()>) { Node::Include(s, None) }

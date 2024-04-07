@@ -12,8 +12,7 @@ pub enum Node {
     Range(Box<NodeS>, Box<NodeS>),
 
     Identifier(String),
-    Declaration(Spanned<String>, Box<NodeS>),
-    MultiDeclaration(Vec<Spanned<String>>, Box<NodeS>),
+    Declaration(Var, Box<NodeS>),
     Assignment(Spanned<String>, Box<NodeS>),
     Function {
         name: Spanned<String>,
@@ -52,7 +51,7 @@ pub enum Node {
     ContextWrapped {
         name: Spanned<String>,
         args: Vec<NodeS>,
-        variable: Option<Spanned<String>>,
+        variable: Option<Var>,
         body: Vec<NodeS>,
     },
 
@@ -60,6 +59,12 @@ pub enum Node {
     // IndexSet(Box<NodeS>, Box<NodeS>, Box<NodeS>),
     Include(Spanned<String>, Option<Vec<NodeS>>),
     Return(Option<Box<NodeS>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Var {
+    Declaration(Spanned<String>),
+    MultiDeclaration(Vec<Spanned<String>>),
 }
 
 #[rustfmt::skip]
@@ -83,7 +88,6 @@ impl Node {
     pub fn ntype(&self) -> NodeType {
         match self {
             Node::Declaration(_, _) => NodeType::Statement,
-            Node::MultiDeclaration(_, _) => NodeType::Statement,
             Node::Function { .. } => NodeType::Statement,
             Node::Include(_, _) => NodeType::Statement,
             Node::Return(_) => NodeType::Statement,
