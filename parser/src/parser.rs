@@ -213,8 +213,17 @@ peg::parser!(
                 }
             }
             --
-            KW("with") _ name:("@" _ name:spanned(<IDENT()>) {name} / expected!("builtin") ) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:spanned(<IDENT()>) {n})? _ body:block(false) {
-                Node::ContextWrapped { name, args, variable: variable.map(|v| Var::Declaration(v)), body }
+            KW("with") _ name:("@" _ name:spanned(<IDENT()>) {name} / expected!("builtin") ) _ "(" _ args:COMMASEP(<node()>) _ ")" variable:(_ KW("as") _ n:COMMASEP(<n:spanned(<IDENT()>) {n}>) {n})? _ body:block(false) {
+                let mut var = None;
+                if let Some(variable) = variable {
+                    if variable.len() == 1 {
+                        var = Some(Var::Declaration(variable[0].clone()));
+                    } else {
+                        var = Some(Var::MultiDeclaration(variable));
+                    }
+                };
+
+                Node::ContextWrapped { name, args, variable: var, body }
             }
             --
             KW("include") _ s:spanned(<STRING()>) { Node::Include(s, None) }
