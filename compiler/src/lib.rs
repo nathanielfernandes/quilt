@@ -403,6 +403,17 @@ impl Compiler {
                 }
             }
 
+            Node::ExternalDeclaration((name, span), value) => {
+                self.compile_expr(&value)?;
+
+                if !self.is_global() {
+                    return Err((NameError::ExternalNotGlobal(name.clone()).into(), *span));
+                }
+
+                let offset = self.add_global_symbol(name.to_string());
+                self.write_op_u16(DefineGlobalDefaulted, offset, *span);
+            }
+
             // Node::MultiDeclaration(names, value) => {
             //     self.compile_expr(&value)?;
 

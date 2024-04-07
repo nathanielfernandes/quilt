@@ -38,6 +38,7 @@ bytecode! {
     SetUpvalue,  // u16
     LoadGlobal,  // u16
     SetGlobal,   // u16
+    DefineGlobalDefaulted, // u16
     CloseUpvalue,
     CreateFunction,
     CreateClosure,

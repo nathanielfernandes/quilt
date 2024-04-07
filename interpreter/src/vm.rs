@@ -379,6 +379,19 @@ where
                     self.globals.insert(name, value);
                 }
 
+                DefineGlobalDefaulted => {
+                    let name = self.read_u16();
+
+                    // MANUAL STACK POP (to avoid clone)
+                    self.sp -= 1;
+                    match self.globals.entry(name) {
+                        Entry::Occupied(_) => {}
+                        Entry::Vacant(entry) => {
+                            entry.insert(self.stack[self.sp].clone());
+                        }
+                    }
+                }
+
                 SetGlobal => {
                     // let name = self.read_symbol().to_string();
                     let name = self.read_u16();

@@ -13,6 +13,7 @@ pub enum Node {
 
     Identifier(String),
     Declaration(Var, Box<NodeS>),
+    ExternalDeclaration(Spanned<String>, Box<NodeS>),
     Assignment(Spanned<String>, Box<NodeS>),
     Function {
         name: Spanned<String>,
@@ -88,6 +89,7 @@ impl Node {
     pub fn ntype(&self) -> NodeType {
         match self {
             Node::Declaration(_, _) => NodeType::Statement,
+            Node::ExternalDeclaration(_, _) => NodeType::Statement,
             Node::Function { .. } => NodeType::Statement,
             Node::Include(_, _) => NodeType::Statement,
             Node::Return(_) => NodeType::Statement,

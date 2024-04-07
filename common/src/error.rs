@@ -277,6 +277,9 @@ pub enum NameError {
 
     #[error("builtin {0:?} is not defined")]
     UndefinedBuiltin(String),
+
+    #[error("external {0:?} is not in the global scope")]
+    ExternalNotGlobal(String),
 }
 
 impl NamedError for NameError {
@@ -285,6 +288,7 @@ impl NamedError for NameError {
             Self::Undefined(_) => "Undefined",
             Self::AlreadyDefined(_) => "AlreadyDefined",
             Self::UndefinedBuiltin(_) => "UndefinedBuiltin",
+            Self::ExternalNotGlobal(_) => "ExternalNotGlobal",
         }
     }
 }

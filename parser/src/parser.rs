@@ -29,7 +29,7 @@ peg::parser!(
 
         rule IDENT() -> String
         = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {?
-            if matches!(n, "true" | "false" | "none" | "let" | "fn" | "include" | "with" | "as" | "while" | "for" | "in" | "return" | "switch" | "default" | "case") {
+            if matches!(n, "true" | "false" | "none" | "let" | "fn" | "include" | "with" | "as" | "while" | "for" | "in" | "return" | "switch" | "default" | "case" | "external") {
                 return Err("Invalid identifier");
             }
 
@@ -145,6 +145,9 @@ peg::parser!(
             --
             KW("return") __? e:node()? { Node::Return(e.map(Box::new)) }
             --
+            KW("external") _ i:spanned(<IDENT()>) _ "=" _ n:@ {
+                Node::ExternalDeclaration(i, Box::new(n))
+            }
             KW("let") _ i:spanned(<IDENT()>) _ op:op()? "=" _ n:@ {
                 if let Some(op) = op {
                     let symbol = (Node::Identifier(i.0.clone()), i.1);
