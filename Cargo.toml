@@ -18,6 +18,7 @@ parser = { path = "./parser" }
 bytecode = { path = "./bytecode" }
 compiler = { path = "./compiler" }
 interpreter = { path = "./interpreter" }
+transpiler-tests = { path = "./transpiler-tests" }
 qstd = { path = "./qstd", optional = true }
 disassembler = { path = "./disassembler", optional = true }
 
@@ -30,6 +31,7 @@ members = [
     "interpreter",
     "disassembler",
     "qstd",
+    "transpiler-tests",
 ]
 exclude = ["cli"]
 
