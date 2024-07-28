@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 
 use bytecode::bytecode::*;
 use common::{error::*, pool::Pool, span::Span, vecc::Vecc, Rc, RefCell};
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 
 use crate::{
     arith::fix_index,
@@ -76,6 +76,7 @@ where
 
     globals: FxHashMap<u16, Value>,
     global_symbols: Pool<String, u16>,
+    externals: FxHashSet<u16>,
 
     open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
 
@@ -103,6 +104,7 @@ where
 
             globals: FxHashMap::default(),
             global_symbols: script.global_symbols,
+            externals: script.externals,
 
             open_upvalues: Vec::with_capacity(256),
 
@@ -170,6 +172,21 @@ where
     pub fn insert_global<S: Into<String>, V: Into<Value>>(&mut self, name: S, value: V) {
         let id = self.global_symbols.add(name.into());
         self.globals.insert(id, value.into());
+    }
+
+    #[inline]
+    pub fn set_external<V: Into<Value>>(&mut self, name: &String, value: V) -> Result<(), Error> {
+        let Some(id) = self.global_symbols.id(name) else {
+            return Err(NameError::ExternalNotDefined(name.to_string()).into());
+        };
+
+        if !self.externals.contains(&id) {
+            return Err(NameError::ExternalNotDefined(name.to_string()).into());
+        }
+
+        self.globals.insert(id, value.into());
+
+        Ok(())
     }
 
     #[inline]

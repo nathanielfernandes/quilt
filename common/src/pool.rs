@@ -88,6 +88,11 @@ where
     }
 
     #[inline]
+    pub fn id(&self, value: &V) -> Option<ID> {
+        self.duplicates.get(value).copied()
+    }
+
+    #[inline]
     pub fn get(&self, id: ID) -> Option<&V> {
         self.entries.get(id.into())
     }

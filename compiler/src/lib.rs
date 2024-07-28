@@ -4,7 +4,7 @@ use common::{
     pool::Pool,
     span::{Span, Spanned},
     vecc::Vecc,
-    Rc,
+    FxHashSet, Rc,
 };
 use interpreter::{
     value::{Function, Value},
@@ -18,7 +18,7 @@ use parser::{
 pub struct Compiler {
     level: Level,
     global_symbols: Pool<String, u16>,
-    // builtins: BuiltinFnMap<Data>,
+    externals: FxHashSet<u16>, // builtins: BuiltinFnMap<Data>,
 }
 
 impl Compiler {
@@ -39,6 +39,7 @@ impl Compiler {
                 constant_pool: Pool::<Value, u16>::new(),
             },
             global_symbols: Pool::new(),
+            externals: FxHashSet::default(),
             // builtins: BuiltinFnMap::default(),
         }
     }
@@ -224,6 +225,7 @@ impl Compiler {
         Script {
             global_symbols: self.global_symbols,
             function: self.level.finish().0,
+            externals: self.externals,
         }
     }
 
@@ -231,6 +233,7 @@ impl Compiler {
         Script {
             global_symbols: self.global_symbols.clone(),
             function: self.level.clone().finish().0,
+            externals: self.externals.clone(),
         }
     }
 
@@ -411,6 +414,11 @@ impl Compiler {
                 }
 
                 let offset = self.add_global_symbol(name.to_string());
+
+                if !self.externals.insert(offset) {
+                    return Err((NameError::ExternalRedefined(name.clone()).into(), *span));
+                }
+
                 self.write_op_u16(DefineGlobalDefaulted, offset, *span);
             }
 

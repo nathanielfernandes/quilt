@@ -17,3 +17,5 @@ pub type Rc<T> = std::sync::Arc<T>;
 
 #[cfg(feature = "arc")]
 pub type RefCell<T> = atomic_refcell::AtomicRefCell<T>;
+
+pub use fxhash::{FxHashMap, FxHashSet};

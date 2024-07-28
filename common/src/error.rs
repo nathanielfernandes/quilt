@@ -280,6 +280,12 @@ pub enum NameError {
 
     #[error("external {0:?} is not in the global scope")]
     ExternalNotGlobal(String),
+
+    #[error("external {0:?} is aldready defined")]
+    ExternalRedefined(String),
+
+    #[error("external {0:?} is not defined")]
+    ExternalNotDefined(String),
 }
 
 impl NamedError for NameError {
@@ -289,6 +295,8 @@ impl NamedError for NameError {
             Self::AlreadyDefined(_) => "AlreadyDefined",
             Self::UndefinedBuiltin(_) => "UndefinedBuiltin",
             Self::ExternalNotGlobal(_) => "ExternalNotGlobal",
+            Self::ExternalRedefined(_) => "ExternalRedefined",
+            Self::ExternalNotDefined(_) => "ExternalNotDefined",
         }
     }
 }
