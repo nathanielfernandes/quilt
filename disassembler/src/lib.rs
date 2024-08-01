@@ -136,7 +136,7 @@ impl<'a> Disassembler<'a> {
                 line.hint = Some(self.create_hint(constant));
             }
 
-            DefineGlobal | LoadGlobal | SetGlobal => {
+            DefineGlobal | LoadGlobal | SetGlobal | DefineGlobalDefaulted => {
                 let global_offset = chunk.ops.read_u16(*offset);
                 line.raw_opargs.push(global_offset);
 
