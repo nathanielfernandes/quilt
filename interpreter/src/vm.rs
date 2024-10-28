@@ -142,12 +142,18 @@ where
         self.exit_fn_stack.clear();
     }
 
-    // pub fn update_script(&mut self, script: Script) {
-    //     self.reset_state();
+    pub fn update_script(&mut self, script: Script) {
+        self.reset_state();
 
-    //     self.frame.closure.function = Rc::new(script.function);
-    //     self.global_symbols = script.global_symbols;
-    // }
+        self.frame = CallFrame {
+            ip: self.frame.ip,
+            st: self.frame.st,
+
+            closure: Rc::new(self.frame.closure.replace_function(script.function)),
+        };
+
+        self.global_symbols = script.global_symbols;
+    }
 
     pub fn new_with(
         data: Data,

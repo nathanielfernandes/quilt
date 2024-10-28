@@ -49,6 +49,7 @@ where
 
         self.compiler.reset_state("@__repl__".into());
         self.vm.update_script(script);
+        // self.vm.update_script(script);
 
         for builtin in self.builtins.iter() {
             builtin(&mut self.vm);

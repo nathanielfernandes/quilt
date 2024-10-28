@@ -224,6 +224,15 @@ pub struct Closure {
     pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
 }
 
+impl Closure {
+    pub(crate) fn replace_function(&self, function: Function) -> Closure {
+        return Closure {
+            function: Rc::new(function),
+            upvalues: self.upvalues.clone(),
+        };
+    }
+}
+
 impl PartialEq for Closure {
     fn eq(&self, other: &Self) -> bool {
         self.function == other.function
